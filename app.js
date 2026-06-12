@@ -384,8 +384,8 @@ function getStatsForUser(uid) {
 }
 
 function scorePrediction(pred, match) {
-  if (pred.home === match.homeScore && pred.away === match.awayScore) return 5;
-  return getOutcome(pred.home, pred.away) === getOutcome(match.homeScore, match.awayScore) ? 3 : 0;
+  if (pred.home === match.homeScore && pred.away === match.awayScore) return 3;
+  return getOutcome(pred.home, pred.away) === getOutcome(match.homeScore, match.awayScore) ? 1 : 0;
 }
 
 function getOutcome(home, away) {
