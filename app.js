@@ -377,15 +377,15 @@ function getStatsForUser(uid) {
     if (!pred) return;
     const score = scorePrediction(pred, match);
     points += score;
-    if (score === 3) exact += 1;
-    if (score === 1) outcome += 1;
+    if (score === 5) exact += 1;
+    if (score === 3) outcome += 1;
   });
   return { points, exact, outcome, predictions: userPredictions.length };
 }
 
 function scorePrediction(pred, match) {
-  if (pred.home === match.homeScore && pred.away === match.awayScore) return 3;
-  return getOutcome(pred.home, pred.away) === getOutcome(match.homeScore, match.awayScore) ? 1 : 0;
+  if (pred.home === match.homeScore && pred.away === match.awayScore) return 5;
+  return getOutcome(pred.home, pred.away) === getOutcome(match.homeScore, match.awayScore) ? 3 : 0;
 }
 
 function getOutcome(home, away) {
