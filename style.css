@@ -69,7 +69,7 @@ button,input,select{font:inherit;color:inherit;}
 button{border:none;background:none;cursor:pointer;}
 .app-shell{min-height:100dvh;}
 .topbar{display:flex;justify-content:space-between;align-items:center;gap:var(--space-4);padding:var(--space-5) var(--space-6);border-bottom:1px solid rgba(255,255,255,.12);background:linear-gradient(110deg, #2452a2 0%, #1f4891 32%, #c81f32 68%, #119b63 100%);color:#fff;box-shadow:var(--shadow-lg);}
-.topbar h1{font-size:var(--text-xl);line-height:.95;color:#fff;letter-spacing:-.05em;text-transform:uppercase;font-family:'WC2026Title','Arial Black','Impact',sans-serif;-webkit-text-stroke:1px rgba(11,33,72,.12);text-shadow:0 1px 0 rgba(255,255,255,.05), 0 2px 10px rgba(0,0,0,.18);}
+.topbar h1{font-size:var(--text-xl);line-height:.95;color:#fff;letter-spacing:-.05em;text-transform:uppercase;font-family:'WC2026Title','Arial Black','Impact',sans-serif;-webkit-text-stroke:1px rgba(11,33,72,.12);text-shadow:0 1px 0 rgba(255,255,255,.05), 0 2px 10px rgba(0,0,0,.18);display:flex;align-items:center;gap:.18em;flex-wrap:wrap;}
 .topbar p{color:rgba(255,255,255,.88);font-size:var(--text-sm);letter-spacing:.02em;opacity:.92;}
 .muted,.helper{color:var(--color-text-muted);font-size:var(--text-sm);}
 .layout{padding:var(--space-6);}
@@ -245,6 +245,10 @@ tr:hover td{background:rgba(255,255,255,.08);}
   letter-spacing:-.05em;
   -webkit-text-stroke:1px rgba(11,33,72,.12);
   text-shadow:0 1px 0 rgba(255,255,255,.05), 0 2px 10px rgba(0,0,0,.18);
+  display:flex;
+  align-items:center;
+  gap:.18em;
+  flex-wrap:wrap;
 }
 
 .topbar p{
@@ -271,6 +275,15 @@ tr:hover td{background:rgba(255,255,255,.08);}
 
 [data-theme="dark"] .sidebar{
   background:linear-gradient(180deg, rgba(36,82,162,.98) 0%, rgba(31,72,145,.96) 45%, rgba(200,31,50,.22) 80%, rgba(17,155,99,.10) 100%);
+}
+
+.year-mark{display:inline-block;margin-left:.12em;margin-right:.08em;}
+.inline-logo{display:inline-block;vertical-align:middle;height:1.05em;width:auto;margin-left:.18em;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,.15));}
+.topbar h1{display:flex;align-items:center;gap:.18em;flex-wrap:wrap;}
+
+@media (max-width:800px){
+  .topbar h1{justify-content:flex-start;}
+  .inline-logo{height:.95em;}
 }
 
 @media (max-width:1080px){
