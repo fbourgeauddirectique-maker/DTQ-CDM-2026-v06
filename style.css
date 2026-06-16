@@ -366,3 +366,15 @@ tr:hover td{background:rgba(255,255,255,.08);}
 [data-theme="light"] .table-wrap table{
   background: var(--color-surface) !important;
 }
+
+[data-theme="light"] .rules-card,
+[data-theme="light"] .rules-card h3,
+[data-theme="light"] .rules-card h4,
+[data-theme="light"] .rules-card p{
+  color: var(--color-text) !important;
+}
+
+[data-theme="light"] .rules-card h3,
+[data-theme="light"] .rules-card h4{
+  background: transparent !important;
+}
