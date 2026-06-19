@@ -58,6 +58,7 @@ const els = {
   mySummary: document.getElementById('my-summary'),
   matchesList: document.getElementById('matches-list'),
   rankingBody: document.getElementById('ranking-body'),
+  rankingEvolutionChart: document.getElementById('ranking-evolution-chart'),
   profileForm: document.getElementById('profile-form'),
   displayName: document.getElementById('display-name'),
   roleSelect: document.getElementById('role-select'),
@@ -84,6 +85,7 @@ function bindUI() {
       document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById(`view-${btn.dataset.view}`).classList.add('active');
+      if (btn.dataset.view === 'ranking') renderRankingEvolution();
     });
   });
 
@@ -120,6 +122,7 @@ function bindUI() {
   els.profileForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!state.authUser) return;
+
     try {
       await setDoc(doc(db, 'users', state.authUser.uid), {
         uid: state.authUser.uid,
@@ -128,6 +131,7 @@ function bindUI() {
         role: els.roleSelect.value,
         updatedAt: serverTimestamp()
       }, { merge: true });
+
       setFeedback(els.profileFeedback, 'Profil enregistré.', 'success');
     } catch (error) {
       setFeedback(els.profileFeedback, error.message, 'danger');
@@ -137,6 +141,7 @@ function bindUI() {
   els.matchForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!isAdmin()) return;
+
     try {
       await addDoc(collection(db, 'matches'), {
         home: els.homeTeam.value.trim(),
@@ -146,6 +151,7 @@ function bindUI() {
         awayScore: null,
         createdAt: serverTimestamp()
       });
+
       els.matchForm.reset();
       setFeedback(els.matchFeedback, 'Match ajouté.', 'success');
     } catch (error) {
@@ -214,14 +220,18 @@ function cleanupListeners() {
 }
 
 function render() {
+  if (!state.authUser) return;
+
   els.currentUserName.textContent = state.profile?.displayName || state.authUser?.email || 'Profil à compléter';
   els.currentUserRole.textContent = state.profile?.role || 'Aucun rôle';
   els.adminSettingsCard.hidden = !isAdmin();
   els.adminResultsCard.hidden = !isAdmin();
+
   renderKpis();
   renderDashboard();
   renderMatches();
   renderRanking();
+  renderRankingEvolution();
   renderAdminResults();
 }
 
@@ -235,7 +245,14 @@ function renderKpis() {
     ['Pronostics', state.predictions.length, 'Temps réel'],
     ['Leader', leader?.displayName || '—', leader ? `${leader.points} points` : '']
   ];
-  els.kpis.innerHTML = cards.map(([label, value, meta]) => `<article class="card"><div class="muted">${label}</div><div class="kpi-value">${value}</div><div class="helper">${meta}</div></article>`).join('');
+
+  els.kpis.innerHTML = cards.map(([label, value, meta]) => `
+    <article class="card">
+      <div class="muted">${label}</div>
+      <div class="kpi-value">${value}</div>
+      <div class="helper">${meta}</div>
+    </article>
+  `).join('');
 }
 
 function renderDashboard() {
@@ -245,13 +262,19 @@ function renderDashboard() {
 
   const myStats = getStatsForUser(state.authUser?.uid);
   const rank = getRanking().findIndex((u) => u.uid === state.authUser?.uid) + 1;
+
   els.mySummary.innerHTML = [
-    ['Mon rang', rank ? `#${rank}` : '—'],
+    ['Mon rang', rank ? rank : '—'],
     ['Mes points', myStats.points],
     ['Scores exacts', myStats.exact],
     ['Bons résultats', myStats.outcome],
     ['Pronostics saisis', myStats.predictions]
-  ].map(([label, value]) => `<div class="summary-item"><strong>${label}</strong><div>${value}</div></div>`).join('');
+  ].map(([label, value]) => `
+    <div class="summary-item">
+      <strong>${label}</strong>
+      <div>${value}</div>
+    </div>
+  `).join('');
 }
 
 function renderMatches() {
@@ -260,6 +283,7 @@ function renderMatches() {
     if (state.filter === 'finished') return isFinished(match);
     return true;
   });
+
   els.matchesList.innerHTML = '';
   matches.forEach((match) => els.matchesList.appendChild(buildMatchCard(match)));
 }
@@ -268,20 +292,23 @@ function buildMatchCard(match) {
   const wrapper = document.createElement('div');
   wrapper.className = 'match-card';
   const pred = getPrediction(state.authUser?.uid, match.id);
+
   wrapper.innerHTML = `
     <div class="match-top">
       <div>
         <strong>${match.home} vs ${match.away}</strong>
         <div class="muted">${formatDate(match.kickoff)}</div>
       </div>
-      <span class="pill">${matchStatus(match)}</span>
+      <div>
+        <span class="pill">${matchStatus(match)}</span>
+      </div>
     </div>
     <div class="match-grid">
       <div class="team-col">
         <span>${match.home}</span>
         <input class="score-input home-score" type="number" min="0" max="20" value="${pred?.home ?? ''}" ${isLocked(match) ? 'disabled' : ''}>
       </div>
-      <div>—</div>
+      <div></div>
       <div class="team-col">
         <span>${match.away}</span>
         <input class="score-input away-score" type="number" min="0" max="20" value="${pred?.away ?? ''}" ${isLocked(match) ? 'disabled' : ''}>
@@ -295,6 +322,7 @@ function buildMatchCard(match) {
     const home = wrapper.querySelector('.home-score').value;
     const away = wrapper.querySelector('.away-score').value;
     if (home === '' || away === '' || !state.authUser) return;
+
     const predictionId = `${state.authUser.uid}_${match.id}`;
     await setDoc(doc(db, 'predictions', predictionId), {
       userId: state.authUser.uid,
@@ -321,9 +349,77 @@ function renderRanking() {
   `).join('');
 }
 
+function buildEvolutionByMatch() {
+  const finishedMatches = state.matches
+    .filter(isFinished)
+    .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
+
+  const participants = state.users.filter((u) => u.role === 'participant' || u.role === 'admin');
+  const cumulativeByUser = new Map(participants.map((u) => [u.uid, 0]));
+  const matchLabels = finishedMatches.map((match, index) => `M${index + 1}`);
+
+  const series = participants.map((user) => ({
+    name: user.displayName || user.email,
+    uid: user.uid,
+    values: []
+  }));
+
+  finishedMatches.forEach((match) => {
+    participants.forEach((user) => {
+      const userPredictions = state.predictions.filter((p) => p.userId === user.uid);
+      const pred = userPredictions.find((p) => p.matchId === match.id);
+      if (pred) {
+        cumulativeByUser.set(user.uid, (cumulativeByUser.get(user.uid) || 0) + scorePrediction(pred, match));
+      }
+    });
+
+    series.forEach((item) => item.values.push(cumulativeByUser.get(item.uid) || 0));
+  });
+
+  return { matchLabels, series };
+}
+
+function renderRankingEvolution() {
+  if (!els.rankingEvolutionChart || !window.Plotly) return;
+
+  const { matchLabels, series } = buildEvolutionByMatch();
+
+  if (!matchLabels.length || !series.length) {
+    els.rankingEvolutionChart.innerHTML = '<div class="helper">Aucun match terminé pour le moment.</div>';
+    return;
+  }
+
+  const traces = series.map((item) => ({
+    x: matchLabels,
+    y: item.values,
+    mode: 'lines+markers',
+    name: item.name,
+    line: { width: 2 },
+    marker: { size: 6 },
+    hovertemplate: '%{fullData.name}<br>%{x}: %{y} pts<extra></extra>'
+  }));
+
+  Plotly.newPlot(els.rankingEvolutionChart, traces, {
+    margin: { l: 50, r: 20, t: 20, b: 40 },
+    xaxis: {
+      title: { text: 'Matchs' },
+      tickmode: 'array',
+      tickvals: matchLabels,
+      ticktext: matchLabels
+    },
+    yaxis: { title: { text: 'Points' } },
+    legend: { orientation: 'h' },
+    hovermode: 'x unified'
+  }, {
+    responsive: true,
+    displayModeBar: false
+  });
+}
+
 function renderAdminResults() {
   els.adminResults.innerHTML = '';
   if (!isAdmin()) return;
+
   state.matches.forEach((match) => {
     const card = document.createElement('div');
     card.className = 'result-card';
@@ -333,25 +429,30 @@ function renderAdminResults() {
           <strong>${match.home} vs ${match.away}</strong>
           <div class="muted">${formatDate(match.kickoff)}</div>
         </div>
-        <span class="pill">${matchStatus(match)}</span>
+        <div>
+          <span class="pill">${matchStatus(match)}</span>
+        </div>
       </div>
       <div class="admin-result-grid">
         <input class="score-input admin-home" type="number" min="0" max="20" value="${match.homeScore ?? ''}">
-        <div>—</div>
+        <div></div>
         <input class="score-input admin-away" type="number" min="0" max="20" value="${match.awayScore ?? ''}">
         <button class="btn btn-primary">Publier</button>
       </div>
     `;
+
     card.querySelector('button').addEventListener('click', async () => {
       const homeScore = card.querySelector('.admin-home').value;
       const awayScore = card.querySelector('.admin-away').value;
       if (homeScore === '' || awayScore === '') return;
+
       await updateDoc(doc(db, 'matches', match.id), {
         homeScore: Number(homeScore),
         awayScore: Number(awayScore),
         updatedAt: serverTimestamp()
       });
     });
+
     els.adminResults.appendChild(card);
   });
 }
@@ -363,8 +464,16 @@ function getPrediction(userId, matchId) {
 function getRanking() {
   return state.users
     .filter((user) => user.role === 'participant' || user.role === 'admin')
-    .map((user) => ({ ...user, ...getStatsForUser(user.uid) }))
-    .sort((a, b) => b.points - a.points || b.exact - a.exact || b.outcome - a.outcome || (a.displayName || '').localeCompare(b.displayName || ''));
+    .map((user) => ({
+      ...user,
+      ...getStatsForUser(user.uid)
+    }))
+    .sort((a, b) =>
+      b.points - a.points ||
+      b.exact - a.exact ||
+      b.outcome - a.outcome ||
+      (a.displayName || a.email).localeCompare(b.displayName || b.email)
+    );
 }
 
 function getStatsForUser(uid) {
@@ -372,6 +481,7 @@ function getStatsForUser(uid) {
   let points = 0;
   let exact = 0;
   let outcome = 0;
+
   state.matches.filter(isFinished).forEach((match) => {
     const pred = userPredictions.find((p) => p.matchId === match.id);
     if (!pred) return;
@@ -380,6 +490,7 @@ function getStatsForUser(uid) {
     if (score === 5) exact += 1;
     if (score === 3) outcome += 1;
   });
+
   return { points, exact, outcome, predictions: userPredictions.length };
 }
 
@@ -403,7 +514,7 @@ function isLocked(match) {
 }
 
 function matchStatus(match) {
-  if (isFinished(match)) return `Terminé · ${match.homeScore}-${match.awayScore}`;
+  if (isFinished(match)) return `Terminé ${match.homeScore}-${match.awayScore}`;
   if (isLocked(match)) return 'Verrouillé';
   return 'Ouvert';
 }
