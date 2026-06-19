@@ -58,6 +58,7 @@ const els = {
   mySummary: document.getElementById('my-summary'),
   matchesList: document.getElementById('matches-list'),
   rankingBody: document.getElementById('ranking-body'),
+  rankingParticipants: document.getElementById('ranking-participants'),
   rankingEvolutionChart: document.getElementById('ranking-evolution-chart'),
   profileForm: document.getElementById('profile-form'),
   displayName: document.getElementById('display-name'),
@@ -98,6 +99,10 @@ function bindUI() {
     });
   });
 
+  els.rankingParticipants?.addEventListener('change', () => {
+    renderRankingEvolution();
+  });
+
   els.authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
@@ -122,7 +127,6 @@ function bindUI() {
   els.profileForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!state.authUser) return;
-
     try {
       await setDoc(doc(db, 'users', state.authUser.uid), {
         uid: state.authUser.uid,
@@ -131,7 +135,6 @@ function bindUI() {
         role: els.roleSelect.value,
         updatedAt: serverTimestamp()
       }, { merge: true });
-
       setFeedback(els.profileFeedback, 'Profil enregistré.', 'success');
     } catch (error) {
       setFeedback(els.profileFeedback, error.message, 'danger');
@@ -141,7 +144,6 @@ function bindUI() {
   els.matchForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!isAdmin()) return;
-
     try {
       await addDoc(collection(db, 'matches'), {
         home: els.homeTeam.value.trim(),
@@ -151,7 +153,6 @@ function bindUI() {
         awayScore: null,
         createdAt: serverTimestamp()
       });
-
       els.matchForm.reset();
       setFeedback(els.matchFeedback, 'Match ajouté.', 'success');
     } catch (error) {
@@ -231,6 +232,7 @@ function render() {
   renderDashboard();
   renderMatches();
   renderRanking();
+  populateRankingParticipantsSelect();
   renderRankingEvolution();
   renderAdminResults();
 }
@@ -349,23 +351,51 @@ function renderRanking() {
   `).join('');
 }
 
+function populateRankingParticipantsSelect() {
+  if (!els.rankingParticipants) return;
+
+  const participants = state.users.filter((u) => u.role === 'participant' || u.role === 'admin');
+  const selected = [...els.rankingParticipants.selectedOptions].map((o) => o.value);
+
+  els.rankingParticipants.innerHTML = `
+    <option value="all">Tous les participants</option>
+    ${participants.map((u) => `<option value="${u.uid}">${u.displayName || u.email}</option>`).join('')}
+  `;
+
+  if (selected.length) {
+    [...els.rankingParticipants.options].forEach((opt) => {
+      opt.selected = selected.includes(opt.value) || (selected.includes('all') && opt.value === 'all');
+    });
+  } else {
+    els.rankingParticipants.options[0].selected = true;
+  }
+}
+
 function buildEvolutionByMatch() {
   const finishedMatches = state.matches
     .filter(isFinished)
     .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
 
   const participants = state.users.filter((u) => u.role === 'participant' || u.role === 'admin');
-  const cumulativeByUser = new Map(participants.map((u) => [u.uid, 0]));
+  const selectedIds = els.rankingParticipants
+    ? [...els.rankingParticipants.selectedOptions].map((o) => o.value)
+    : ['all'];
+
+  const visibleParticipants = selectedIds.includes('all') || !selectedIds.length
+    ? participants
+    : participants.filter((u) => selectedIds.includes(u.uid));
+
+  const cumulativeByUser = new Map(visibleParticipants.map((u) => [u.uid, 0]));
   const matchLabels = finishedMatches.map((match, index) => `M${index + 1}`);
 
-  const series = participants.map((user) => ({
+  const series = visibleParticipants.map((user) => ({
     name: user.displayName || user.email,
     uid: user.uid,
     values: []
   }));
 
   finishedMatches.forEach((match) => {
-    participants.forEach((user) => {
+    visibleParticipants.forEach((user) => {
       const userPredictions = state.predictions.filter((p) => p.userId === user.uid);
       const pred = userPredictions.find((p) => p.matchId === match.id);
       if (pred) {
