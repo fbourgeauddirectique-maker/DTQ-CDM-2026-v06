@@ -1,571 +1,463 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import {
-  getAuth,
-  onAuthStateChanged,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut
-} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import {
-  getFirestore,
-  collection,
-  doc,
-  setDoc,
-  addDoc,
-  updateDoc,
-  onSnapshot,
-  query,
-  orderBy,
-  serverTimestamp
-} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFirestore, collection, doc, getDoc, getDocs, onSnapshot, orderBy, query, serverTimestamp, setDoc, addDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAVQcizGD4EmcCsIQ52iONzR87wskvgLOI",
-  authDomain: "dtq-coupe-du-monde-2026.firebaseapp.com",
-  projectId: "dtq-coupe-du-monde-2026",
-  storageBucket: "dtq-coupe-du-monde-2026.firebasestorage.app",
-  messagingSenderId: "944672750520",
-  appId: "1:944672750520:web:42a817af4260007814ad4d"
+  apiKey: 'A_REMPLACER',
+  authDomain: 'A_REMPLACER',
+  projectId: 'A_REMPLACER',
+  storageBucket: 'A_REMPLACER',
+  messagingSenderId: 'A_REMPLACER',
+  appId: 'A_REMPLACER'
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+const OLD_PHASES = [
+  { id: 'before_r16', label: 'Avant les 1/16e', points: 50 },
+  { id: 'before_r8', label: 'Avant les 1/8e', points: 40 },
+  { id: 'before_qf', label: 'Avant les quarts', points: 30 },
+  { id: 'before_sf', label: 'Avant les demies', points: 20 },
+  { id: 'before_final', label: 'Avant la finale', points: 10 }
+];
+
+const TEAMS = ['ARG','BRA','FRA','ESP','POR','ENG','GER','ITA','NED','BEL','CRO','URU','USA','MEX','MAR','JPN','KOR','SEN','DEN','SUI','POL','AUT','COL','ECU','CAN','CHI','SRB','TUR','SWE','NOR','CIV','NGA'];
+const TEAM_LABELS = {
+  ARG:'Argentine', BRA:'Brésil', FRA:'France', ESP:'Espagne', POR:'Portugal', ENG:'Angleterre', GER:'Allemagne', ITA:'Italie',
+  NED:'Pays-Bas', BEL:'Belgique', CRO:'Croatie', URU:'Uruguay', USA:'États-Unis', MEX:'Mexique', MAR:'Maroc', JPN:'Japon',
+  KOR:'Corée du Sud', SEN:'Sénégal', DEN:'Danemark', SUI:'Suisse', POL:'Pologne', AUT:'Autriche', COL:'Colombie', ECU:'Équateur',
+  CAN:'Canada', CHI:'Chili', SRB:'Serbie', TUR:'Turquie', SWE:'Suède', NOR:'Norvège', CIV:'Côte d\'Ivoire', NGA:'Nigeria'
+};
 
 const state = {
-  authUser: null,
-  profile: null,
-  users: [],
+  app: null, auth: null, db: null, user: null,
+  settings: { currentPhase: 'before_r16', actualWinner: '', aliveTeams: [...TEAMS], winnerDeadline: '' },
+  participants: [],
   matches: [],
   predictions: [],
-  filter: 'all',
-  unsubscribers: []
+  winnerPredictions: [],
+  selectedRankingUsers: [],
+  unsubscribes: []
 };
 
 const els = {
-  authPanel: document.getElementById('auth-panel'),
-  app: document.getElementById('app'),
-  authForm: document.getElementById('auth-form'),
-  email: document.getElementById('auth-email'),
-  password: document.getElementById('auth-password'),
-  registerBtn: document.getElementById('register-btn'),
-  authFeedback: document.getElementById('auth-feedback'),
-  signOutBtn: document.getElementById('sign-out-btn'),
-  currentUserName: document.getElementById('current-user-name'),
-  currentUserRole: document.getElementById('current-user-role'),
-  kpis: document.getElementById('kpis'),
-  dashboardMatches: document.getElementById('dashboard-matches'),
-  mySummary: document.getElementById('my-summary'),
-  matchesList: document.getElementById('matches-list'),
-  rankingBody: document.getElementById('ranking-body'),
-  rankingParticipants: document.getElementById('ranking-participants'),
-  rankingEvolutionChart: document.getElementById('ranking-evolution-chart'),
-  profileForm: document.getElementById('profile-form'),
-  displayName: document.getElementById('display-name'),
-  roleSelect: document.getElementById('role-select'),
-  profileFeedback: document.getElementById('profile-feedback'),
-  matchForm: document.getElementById('match-form'),
-  homeTeam: document.getElementById('home-team'),
-  awayTeam: document.getElementById('away-team'),
-  kickoff: document.getElementById('kickoff'),
-  matchFeedback: document.getElementById('match-feedback'),
-  adminResults: document.getElementById('admin-results'),
-  adminSettingsCard: document.getElementById('admin-settings-card'),
-  adminResultsCard: document.getElementById('admin-results-card'),
-  themeToggle: document.getElementById('theme-toggle')
+  themeToggle: document.getElementById('themeToggle'),
+  authBtn: document.getElementById('authBtn'),
+  userBadge: document.getElementById('userBadge'),
+  participantsCount: document.getElementById('participantsCount'),
+  completedMatchesCount: document.getElementById('completedMatchesCount'),
+  leaderboardBody: document.getElementById('leaderboardBody'),
+  rankingParticipants: document.getElementById('rankingParticipants'),
+  rankingChart: document.getElementById('rankingChart'),
+  winnerPhaseLabel: document.getElementById('winnerPhaseLabel'),
+  winnerPhasePoints: document.getElementById('winnerPhasePoints'),
+  winnerActualLabel: document.getElementById('winnerActualLabel'),
+  winnerUserStatus: document.getElementById('winnerUserStatus'),
+  winnerDeadline: document.getElementById('winnerDeadline'),
+  winnerDeadlineInfo: document.getElementById('winnerDeadlineInfo'),
+  winnerPhaseSelect: document.getElementById('winnerPhaseSelect'),
+  winnerTeamSelect: document.getElementById('winnerTeamSelect'),
+  winnerOnlyAliveTeams: document.getElementById('winnerOnlyAliveTeams'),
+  winnerPredictionForm: document.getElementById('winnerPredictionForm'),
+  winnerClearBtn: document.getElementById('winnerClearBtn'),
+  winnerPhaseInfo: document.getElementById('winnerPhaseInfo'),
+  winnerHistoryBody: document.getElementById('winnerHistoryBody'),
+  winnerLeaderboardBody: document.getElementById('winnerLeaderboardBody'),
+  participantForm: document.getElementById('participantForm'),
+  participantName: document.getElementById('participantName'),
+  winnerAdminForm: document.getElementById('winnerAdminForm'),
+  adminWinnerPhase: document.getElementById('adminWinnerPhase'),
+  adminActualWinner: document.getElementById('adminActualWinner'),
+  winnerTeamsChecklist: document.getElementById('winnerTeamsChecklist'),
+  seedDemoBtn: document.getElementById('seedDemoBtn'),
+  matchForm: document.getElementById('matchForm'),
+  matchHome: document.getElementById('matchHome'),
+  matchAway: document.getElementById('matchAway'),
+  matchHomeScore: document.getElementById('matchHomeScore'),
+  matchAwayScore: document.getElementById('matchAwayScore')
 };
 
-bindUI();
-applyTheme();
-watchAuth();
+initTheme();
+populateStaticOptions();
+setupTabs();
+attachEvents();
+setupFirebase();
 
-function bindUI() {
-  document.querySelectorAll('[data-view]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.nav button').forEach((b) => b.classList.remove('active'));
-      document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById(`view-${btn.dataset.view}`).classList.add('active');
-      if (btn.dataset.view === 'ranking') renderRankingEvolution();
-    });
-  });
-
-  document.querySelectorAll('.filter-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.filter = btn.dataset.filter;
-      document.querySelectorAll('.filter-btn').forEach((b) => b.classList.remove('btn-primary'));
-      btn.classList.add('btn-primary');
-      renderMatches();
-    });
-  });
-
-  els.rankingParticipants?.addEventListener('change', () => {
-    renderRankingEvolution();
-  });
-
-  els.authForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    try {
-      await signInWithEmailAndPassword(auth, els.email.value.trim(), els.password.value.trim());
-      setFeedback(els.authFeedback, 'Connexion réussie.', 'success');
-    } catch (error) {
-      setFeedback(els.authFeedback, mapAuthError(error), 'danger');
-    }
-  });
-
-  els.registerBtn.addEventListener('click', async () => {
-    try {
-      await createUserWithEmailAndPassword(auth, els.email.value.trim(), els.password.value.trim());
-      setFeedback(els.authFeedback, 'Compte créé. Enregistrez maintenant votre profil.', 'success');
-    } catch (error) {
-      setFeedback(els.authFeedback, mapAuthError(error), 'danger');
-    }
-  });
-
-  els.signOutBtn.addEventListener('click', () => signOut(auth));
-
-  els.profileForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!state.authUser) return;
-    try {
-      await setDoc(doc(db, 'users', state.authUser.uid), {
-        uid: state.authUser.uid,
-        email: state.authUser.email,
-        displayName: els.displayName.value.trim(),
-        role: els.roleSelect.value,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-      setFeedback(els.profileFeedback, 'Profil enregistré.', 'success');
-    } catch (error) {
-      setFeedback(els.profileFeedback, error.message, 'danger');
-    }
-  });
-
-  els.matchForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!isAdmin()) return;
-    try {
-      await addDoc(collection(db, 'matches'), {
-        home: els.homeTeam.value.trim(),
-        away: els.awayTeam.value.trim(),
-        kickoff: new Date(els.kickoff.value).toISOString(),
-        homeScore: null,
-        awayScore: null,
-        createdAt: serverTimestamp()
-      });
-      els.matchForm.reset();
-      setFeedback(els.matchFeedback, 'Match ajouté.', 'success');
-    } catch (error) {
-      setFeedback(els.matchFeedback, error.message, 'danger');
-    }
-  });
-
+function initTheme() {
+  const pref = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', pref);
   els.themeToggle.addEventListener('click', () => {
-    const root = document.documentElement;
-    const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-    root.setAttribute('data-theme', next);
-    els.themeToggle.textContent = next === 'dark' ? '☀️' : '🌙';
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
   });
 }
 
-function applyTheme() {
-  const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  els.themeToggle.textContent = dark ? '☀️' : '🌙';
+function setupTabs() {
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelector(`[data-tab-panel="${btn.dataset.tabTarget}"]`)?.classList.add('active');
+    if (btn.dataset.tabTarget === 'dashboard') setTimeout(renderRankingChart, 80);
+  }));
 }
 
-function watchAuth() {
-  onAuthStateChanged(auth, async (user) => {
-    cleanupListeners();
-    state.authUser = user;
-    state.profile = null;
+function populateStaticOptions() {
+  const phaseHtml = OLD_PHASES.map(p => `<option value="${p.id}">${p.label} · ${p.points} pts</option>`).join('');
+  els.winnerPhaseSelect.innerHTML = phaseHtml;
+  els.adminWinnerPhase.innerHTML = phaseHtml;
+  const teamOptions = TEAMS.map(c => `<option value="${c}">${TEAM_LABELS[c]}</option>`).join('');
+  els.winnerTeamSelect.innerHTML = `<option value="">Choisir une équipe</option>${teamOptions}`;
+  els.adminActualWinner.innerHTML = `<option value="">Non défini</option>${teamOptions}`;
+  els.matchHome.innerHTML = `<option value="">Choisir</option>${teamOptions}`;
+  els.matchAway.innerHTML = `<option value="">Choisir</option>${teamOptions}`;
+  renderWinnerTeamsChecklist(state.settings.aliveTeams);
+  refreshWinnerUi();
+}
 
-    if (!user) {
-      els.authPanel.hidden = false;
-      els.app.hidden = true;
-      els.signOutBtn.hidden = true;
-      return;
+function setupFirebase() {
+  const needsConfig = Object.values(firebaseConfig).some(v => v === 'A_REMPLACER');
+  if (needsConfig) {
+    els.userBadge.textContent = 'Configurer Firebase';
+    els.winnerUserStatus.textContent = 'Configurer Firebase';
+    els.authBtn.textContent = 'Firebase non configuré';
+    els.authBtn.disabled = true;
+    return;
+  }
+  state.app = initializeApp(firebaseConfig);
+  state.auth = getAuth(state.app);
+  state.db = getFirestore(state.app);
+  onAuthStateChanged(state.auth, async user => {
+    state.user = user;
+    if (user) {
+      els.authBtn.textContent = 'Se déconnecter';
+      els.userBadge.textContent = user.uid.slice(0, 10);
+      els.winnerUserStatus.textContent = `Connecté · ${user.uid.slice(0, 8)}`;
+      await ensureParticipant(user.uid);
+      subscribeData();
+    } else {
+      els.authBtn.textContent = 'Connexion anonyme';
+      els.userBadge.textContent = 'Hors ligne';
+      els.winnerUserStatus.textContent = 'Hors ligne';
+      cleanupSubs();
+      state.participants = [];
+      state.matches = [];
+      state.predictions = [];
+      state.winnerPredictions = [];
+      renderAll();
     }
-
-    els.authPanel.hidden = true;
-    els.app.hidden = false;
-    els.signOutBtn.hidden = false;
-
-    subscribeData(user.uid);
   });
 }
 
-function subscribeData(uid) {
-  const unsubUsers = onSnapshot(query(collection(db, 'users')), (snapshot) => {
-    state.users = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-    state.profile = state.users.find((u) => u.uid === uid) || null;
-    render();
+function attachEvents() {
+  els.authBtn.addEventListener('click', async () => {
+    if (!state.auth) return;
+    if (state.user) await signOut(state.auth);
+    else await signInAnonymously(state.auth);
   });
 
-  const unsubMatches = onSnapshot(query(collection(db, 'matches'), orderBy('kickoff')), (snapshot) => {
-    state.matches = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-    render();
+  els.winnerOnlyAliveTeams.addEventListener('change', refreshWinnerTeamOptions);
+  els.winnerPhaseSelect.addEventListener('change', refreshWinnerUi);
+  els.rankingParticipants.addEventListener('change', () => {
+    renderRankingChart();
   });
 
-  const unsubPredictions = onSnapshot(query(collection(db, 'predictions')), (snapshot) => {
-    state.predictions = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-    render();
-  });
-
-  state.unsubscribers = [unsubUsers, unsubMatches, unsubPredictions];
-}
-
-function cleanupListeners() {
-  state.unsubscribers.forEach((unsub) => unsub && unsub());
-  state.unsubscribers = [];
-}
-
-function render() {
-  if (!state.authUser) return;
-
-  els.currentUserName.textContent = state.profile?.displayName || state.authUser?.email || 'Profil à compléter';
-  els.currentUserRole.textContent = state.profile?.role || 'Aucun rôle';
-  els.adminSettingsCard.hidden = !isAdmin();
-  els.adminResultsCard.hidden = !isAdmin();
-
-  renderKpis();
-  renderDashboard();
-  renderMatches();
-  renderRanking();
-  populateRankingParticipantsSelect();
-  renderRankingEvolution();
-  renderAdminResults();
-}
-
-function renderKpis() {
-  const participants = state.users.filter((u) => u.role === 'participant').length;
-  const finished = state.matches.filter(isFinished).length;
-  const leader = getRanking()[0];
-  const cards = [
-    ['Participants', participants, 'Profils Firestore'],
-    ['Matches', state.matches.length, `${finished} terminés`],
-    ['Pronostics', state.predictions.length, 'Temps réel'],
-    ['Leader', leader?.displayName || '—', leader ? `${leader.points} points` : '']
-  ];
-
-  els.kpis.innerHTML = cards.map(([label, value, meta]) => `
-    <article class="card">
-      <div class="muted">${label}</div>
-      <div class="kpi-value">${value}</div>
-      <div class="helper">${meta}</div>
-    </article>
-  `).join('');
-}
-
-function renderDashboard() {
-  const openMatches = state.matches.filter((m) => !isLocked(m)).slice(0, 5);
-  els.dashboardMatches.innerHTML = '';
-  openMatches.forEach((match) => els.dashboardMatches.appendChild(buildMatchCard(match)));
-
-  const myStats = getStatsForUser(state.authUser?.uid);
-  const rank = getRanking().findIndex((u) => u.uid === state.authUser?.uid) + 1;
-
-  els.mySummary.innerHTML = [
-    ['Mon rang', rank ? rank : '—'],
-    ['Mes points', myStats.points],
-    ['Scores exacts', myStats.exact],
-    ['Bons résultats', myStats.outcome],
-    ['Pronostics saisis', myStats.predictions]
-  ].map(([label, value]) => `
-    <div class="summary-item">
-      <strong>${label}</strong>
-      <div>${value}</div>
-    </div>
-  `).join('');
-}
-
-function renderMatches() {
-  const matches = state.matches.filter((match) => {
-    if (state.filter === 'open') return !isFinished(match) && !isLocked(match);
-    if (state.filter === 'finished') return isFinished(match);
-    return true;
-  });
-
-  els.matchesList.innerHTML = '';
-  matches.forEach((match) => els.matchesList.appendChild(buildMatchCard(match)));
-}
-
-function buildMatchCard(match) {
-  const wrapper = document.createElement('div');
-  wrapper.className = 'match-card';
-  const pred = getPrediction(state.authUser?.uid, match.id);
-
-  wrapper.innerHTML = `
-    <div class="match-top">
-      <div>
-        <strong>${match.home} vs ${match.away}</strong>
-        <div class="muted">${formatDate(match.kickoff)}</div>
-      </div>
-      <div>
-        <span class="pill">${matchStatus(match)}</span>
-      </div>
-    </div>
-    <div class="match-grid">
-      <div class="team-col">
-        <span>${match.home}</span>
-        <input class="score-input home-score" type="number" min="0" max="20" value="${pred?.home ?? ''}" ${isLocked(match) ? 'disabled' : ''}>
-      </div>
-      <div></div>
-      <div class="team-col">
-        <span>${match.away}</span>
-        <input class="score-input away-score" type="number" min="0" max="20" value="${pred?.away ?? ''}" ${isLocked(match) ? 'disabled' : ''}>
-      </div>
-      <button class="btn btn-primary save-btn" ${isLocked(match) ? 'disabled' : ''}>Enregistrer</button>
-    </div>
-    ${isFinished(match) ? `<div class="helper">Résultat officiel : ${match.homeScore} - ${match.awayScore}</div>` : ''}
-  `;
-
-  wrapper.querySelector('.save-btn')?.addEventListener('click', async () => {
-    const home = wrapper.querySelector('.home-score').value;
-    const away = wrapper.querySelector('.away-score').value;
-    if (home === '' || away === '' || !state.authUser) return;
-
-    const predictionId = `${state.authUser.uid}_${match.id}`;
-    await setDoc(doc(db, 'predictions', predictionId), {
-      userId: state.authUser.uid,
-      matchId: match.id,
-      home: Number(home),
-      away: Number(away),
+  els.winnerPredictionForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!state.user || !state.db) return alert('Connectez-vous d’abord.');
+    if (state.settings.winnerDeadline && Date.now() > new Date(state.settings.winnerDeadline).getTime()) return alert('La date limite de saisie est dépassée.');
+    const phaseId = els.winnerPhaseSelect.value;
+    const team = els.winnerTeamSelect.value;
+    if (!phaseId || !team) return alert('Choisissez une phase et une équipe.');
+    await setDoc(doc(state.db, 'winnerPredictions', `${state.user.uid}_${phaseId}`), {
+      userId: state.user.uid,
+      userLabel: participantLabel(state.user.uid),
+      phaseId,
+      team,
+      createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     }, { merge: true });
   });
 
-  return wrapper;
-}
-
-function renderRanking() {
-  const ranking = getRanking();
-  els.rankingBody.innerHTML = ranking.map((user, index) => `
-    <tr>
-      <td>${index + 1}</td>
-      <td>${user.displayName || user.email}</td>
-      <td>${user.points}</td>
-      <td>${user.exact}</td>
-      <td>${user.outcome}</td>
-    </tr>
-  `).join('');
-}
-
-function populateRankingParticipantsSelect() {
-  if (!els.rankingParticipants) return;
-
-  const participants = state.users.filter((u) => u.role === 'participant' || u.role === 'admin');
-  const selected = [...els.rankingParticipants.selectedOptions].map((o) => o.value);
-
-  els.rankingParticipants.innerHTML = `
-    <option value="all">Tous les participants</option>
-    ${participants.map((u) => `<option value="${u.uid}">${u.displayName || u.email}</option>`).join('')}
-  `;
-
-  if (selected.length) {
-    [...els.rankingParticipants.options].forEach((opt) => {
-      opt.selected = selected.includes(opt.value) || (selected.includes('all') && opt.value === 'all');
-    });
-  } else {
-    els.rankingParticipants.options[0].selected = true;
-  }
-}
-
-function buildEvolutionByMatch() {
-  const finishedMatches = state.matches
-    .filter(isFinished)
-    .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
-
-  const participants = state.users.filter((u) => u.role === 'participant' || u.role === 'admin');
-  const selectedIds = els.rankingParticipants
-    ? [...els.rankingParticipants.selectedOptions].map((o) => o.value)
-    : ['all'];
-
-  const visibleParticipants = selectedIds.includes('all') || !selectedIds.length
-    ? participants
-    : participants.filter((u) => selectedIds.includes(u.uid));
-
-  const cumulativeByUser = new Map(visibleParticipants.map((u) => [u.uid, 0]));
-  const matchLabels = finishedMatches.map((match, index) => `M${index + 1}`);
-
-  const series = visibleParticipants.map((user) => ({
-    name: user.displayName || user.email,
-    uid: user.uid,
-    values: []
-  }));
-
-  finishedMatches.forEach((match) => {
-    visibleParticipants.forEach((user) => {
-      const userPredictions = state.predictions.filter((p) => p.userId === user.uid);
-      const pred = userPredictions.find((p) => p.matchId === match.id);
-      if (pred) {
-        cumulativeByUser.set(user.uid, (cumulativeByUser.get(user.uid) || 0) + scorePrediction(pred, match));
-      }
-    });
-
-    series.forEach((item) => item.values.push(cumulativeByUser.get(item.uid) || 0));
+  els.winnerClearBtn.addEventListener('click', async () => {
+    if (!state.user || !state.db) return;
+    const phaseId = els.winnerPhaseSelect.value;
+    await setDoc(doc(state.db, 'winnerPredictions', `${state.user.uid}_${phaseId}`), {
+      userId: state.user.uid,
+      userLabel: participantLabel(state.user.uid),
+      phaseId,
+      team: '',
+      updatedAt: serverTimestamp()
+    }, { merge: true });
   });
 
-  return { matchLabels, series };
+  els.participantForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!state.db) return;
+    const name = els.participantName.value.trim();
+    if (!name) return;
+    const id = `manual_${slugify(name)}_${Date.now().toString(36)}`;
+    await setDoc(doc(state.db, 'users', id), { uid: id, displayName: name, createdAt: serverTimestamp() });
+    els.participantName.value = '';
+  });
+
+  els.winnerAdminForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!state.db) return;
+    const aliveTeams = Array.from(els.winnerTeamsChecklist.querySelectorAll('input:checked')).map(i => i.value);
+    await setDoc(doc(state.db, 'settings', 'winnerGame'), {
+      currentPhase: els.adminWinnerPhase.value,
+      actualWinner: els.adminActualWinner.value,
+      aliveTeams,
+      winnerDeadline: els.winnerDeadline?.value ? new Date(els.winnerDeadline.value).toISOString() : '',
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  });
+
+  els.matchForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!state.db) return;
+    const home = els.matchHome.value;
+    const away = els.matchAway.value;
+    if (!home || !away || home === away) return alert('Choisissez deux équipes différentes.');
+    await addDoc(collection(state.db, 'matches'), {
+      home, away,
+      homeScore: Number(els.matchHomeScore.value || 0),
+      awayScore: Number(els.matchAwayScore.value || 0),
+      status: 'FINISHED',
+      createdAt: serverTimestamp()
+    });
+    els.matchForm.reset();
+    els.matchHomeScore.value = 0; els.matchAwayScore.value = 0;
+  });
+
+  els.seedDemoBtn.addEventListener('click', seedDemoData);
 }
 
-function renderRankingEvolution() {
-  if (!els.rankingEvolutionChart || !window.Plotly) return;
+async function ensureParticipant(uid) {
+  const ref = doc(state.db, 'users', uid);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) {
+    await setDoc(ref, { uid, displayName: `Participant ${uid.slice(0, 6)}`, createdAt: serverTimestamp() });
+  }
+}
 
-  const { matchLabels, series } = buildEvolutionByMatch();
+function subscribeData() {
+  cleanupSubs();
+  state.unsubscribes.push(onSnapshot(collection(state.db, 'users'), snap => {
+    state.participants = snap.docs.map(d => d.data());
+    renderAll();
+  }));
+  state.unsubscribes.push(onSnapshot(query(collection(state.db, 'matches'), orderBy('createdAt', 'asc')), snap => {
+    state.matches = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderAll();
+  }));
+  state.unsubscribes.push(onSnapshot(collection(state.db, 'predictions'), snap => {
+    state.predictions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderAll();
+  }));
+  state.unsubscribes.push(onSnapshot(collection(state.db, 'winnerPredictions'), snap => {
+    state.winnerPredictions = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.team);
+    renderAll();
+  }));
+  state.unsubscribes.push(onSnapshot(doc(state.db, 'settings', 'winnerGame'), snap => {
+    state.settings = snap.exists() ? { ...state.settings, ...snap.data() } : state.settings;
+    renderWinnerTeamsChecklist(state.settings.aliveTeams || []);
+    refreshWinnerUi();
+    renderAll();
+  }));
+}
 
-  if (!matchLabels.length || !series.length) {
-    els.rankingEvolutionChart.innerHTML = '<div class="helper">Aucun match terminé pour le moment.</div>';
+function cleanupSubs() {
+  state.unsubscribes.forEach(fn => fn());
+  state.unsubscribes = [];
+}
+
+function renderAll() {
+  els.participantsCount.textContent = String(state.participants.length);
+  els.completedMatchesCount.textContent = String(state.matches.length);
+  refreshWinnerUi();
+  renderLeaderboard();
+  renderWinnerHistory();
+  renderWinnerLeaderboard();
+  renderRankingSelect();
+  renderRankingChart();
+}
+
+function refreshWinnerUi() {
+  const phase = OLD_PHASES.find(p => p.id === (state.settings.currentPhase || els.winnerPhaseSelect.value)) || OLD_PHASES[0];
+  els.winnerPhaseLabel.textContent = phase.label;
+  els.winnerPhasePoints.textContent = String(phase.points);
+  els.winnerActualLabel.textContent = state.settings.actualWinner ? TEAM_LABELS[state.settings.actualWinner] : 'Non défini';
+  els.winnerPhaseSelect.value = state.settings.currentPhase || phase.id;
+  els.adminWinnerPhase.value = state.settings.currentPhase || phase.id;
+  els.adminActualWinner.value = state.settings.actualWinner || '';
+  els.winnerPhaseInfo.textContent = `Si vous trouvez le champion réel à cette phase, vous marquez ${phase.points} points.`;
+  if (state.settings.winnerDeadline) {
+    const d = new Date(state.settings.winnerDeadline);
+    els.winnerDeadline.value = toLocalInputValue(d);
+    els.winnerDeadlineInfo.textContent = `Clôture des pronostics : ${d.toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })}.`;
+  } else if (els.winnerDeadline) {
+    els.winnerDeadline.value = '';
+    els.winnerDeadlineInfo.textContent = 'Les participants ne peuvent plus saisir de vainqueur après cette date.';
+  }
+  refreshWinnerTeamOptions();
+}
+
+function refreshWinnerTeamOptions() {
+  const selected = els.winnerTeamSelect.value;
+  const pool = els.winnerOnlyAliveTeams.checked ? (state.settings.aliveTeams || TEAMS) : TEAMS;
+  els.winnerTeamSelect.innerHTML = `<option value="">Choisir une équipe</option>` + pool.map(c => `<option value="${c}">${TEAM_LABELS[c]}</option>`).join('');
+  if (pool.includes(selected)) els.winnerTeamSelect.value = selected;
+}
+
+function renderWinnerTeamsChecklist(aliveTeams) {
+  els.winnerTeamsChecklist.innerHTML = TEAMS.map(code => `<label class="team-check"><input type="checkbox" value="${code}" ${aliveTeams.includes(code) ? 'checked' : ''}><span>${TEAM_LABELS[code]}</span></label>`).join('');
+}
+
+function renderLeaderboard() {
+  const rows = buildLeaderboardRows();
+  els.leaderboardBody.innerHTML = rows.length ? rows.map((r, i) => `<tr><td>${i + 1}</td><td>${r.label}</td><td>${r.totalPoints}</td><td>${r.matchPoints}</td><td>${r.winnerBonus}</td></tr>`).join('') : '<tr><td colspan="5" class="empty-cell">Aucun participant pour le moment.</td></tr>';
+}
+
+function renderWinnerHistory() {
+  if (!state.user) {
+    els.winnerHistoryBody.innerHTML = '<tr><td colspan="4" class="empty-cell">Connectez-vous pour voir vos choix.</td></tr>';
     return;
   }
+  const mine = state.winnerPredictions.filter(r => r.userId === state.user.uid);
+  const byPhase = new Map(mine.map(r => [r.phaseId, r]));
+  const actualWinner = state.settings.actualWinner;
+  els.winnerHistoryBody.innerHTML = OLD_PHASES.map(phase => {
+    const pred = byPhase.get(phase.id);
+    const team = pred?.team;
+    const isCorrect = actualWinner && team === actualWinner;
+    const isElim = team && !state.settings.aliveTeams.includes(team) && !isCorrect;
+    const status = isCorrect ? '<span class="result-ok">Champion trouvé</span>' : isElim ? '<span class="result-ko">Éliminé</span>' : team ? '<span class="result-open">Toujours en course</span>' : '<span class="result-open">En attente</span>';
+    return `<tr><td>${phase.label}</td><td>${phase.points}</td><td>${team ? TEAM_LABELS[team] : '—'}</td><td>${status}</td></tr>`;
+  }).join('');
+}
 
-  const traces = series.map((item) => ({
-    x: matchLabels,
-    y: item.values,
-    mode: 'lines+markers',
-    name: item.name,
-    line: { width: 2 },
-    marker: { size: 6 },
-    hovertemplate: '%{fullData.name}<br>%{x}: %{y} pts<extra></extra>'
-  }));
+function renderWinnerLeaderboard() {
+  const rows = buildWinnerLeaderboardRows();
+  els.winnerLeaderboardBody.innerHTML = rows.length ? rows.map(r => `<tr><td>${r.label}</td><td>${r.score}</td><td>${r.teamLabel || '—'}</td><td>${r.phaseLabel || '—'}</td></tr>`).join('') : '<tr><td colspan="4" class="empty-cell">Aucun bonus pour le moment.</td></tr>';
+}
 
-  Plotly.newPlot(els.rankingEvolutionChart, traces, {
-    margin: { l: 50, r: 20, t: 20, b: 40 },
-    xaxis: {
-      title: { text: 'Matchs' },
-      tickmode: 'array',
-      tickvals: matchLabels,
-      ticktext: matchLabels
-    },
+function renderRankingSelect() {
+  const current = new Set(Array.from(els.rankingParticipants.selectedOptions).map(o => o.value));
+  els.rankingParticipants.innerHTML = state.participants.map(p => `<option value="${p.uid}" ${current.has(p.uid) ? 'selected' : ''}>${p.displayName || participantLabel(p.uid)}</option>`).join('');
+}
+
+function renderRankingChart() {
+  if (!window.Plotly) return;
+  const selected = Array.from(els.rankingParticipants.selectedOptions).map(o => o.value);
+  const rows = buildRankingSeries(selected.length ? selected : null);
+  const data = rows.series.map(s => ({ x: rows.matchLabels, y: s.values, type: 'scatter', mode: 'lines+markers', name: s.label, line: { width: 3 }, marker: { size: 6 } }));
+  if (!data.length) {
+    Plotly.newPlot(els.rankingChart, [], { paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', annotations: [{ text: 'Aucune donnée à afficher', showarrow: false }], margin: { t: 20, r: 20, b: 30, l: 30 } }, { responsive: true, displayModeBar: false });
+    return;
+  }
+  Plotly.newPlot(els.rankingChart, data, {
+    paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+    margin: { t: 20, r: 20, b: 45, l: 50 },
+    xaxis: { title: { text: 'Matches terminés' } },
     yaxis: { title: { text: 'Points' } },
     legend: { orientation: 'h' },
     hovermode: 'x unified'
-  }, {
-    responsive: true,
-    displayModeBar: false
-  });
+  }, { responsive: true, displayModeBar: false });
 }
 
-function renderAdminResults() {
-  els.adminResults.innerHTML = '';
-  if (!isAdmin()) return;
-
-  state.matches.forEach((match) => {
-    const card = document.createElement('div');
-    card.className = 'result-card';
-    card.innerHTML = `
-      <div class="row wrap section-gap">
-        <div>
-          <strong>${match.home} vs ${match.away}</strong>
-          <div class="muted">${formatDate(match.kickoff)}</div>
-        </div>
-        <div>
-          <span class="pill">${matchStatus(match)}</span>
-        </div>
-      </div>
-      <div class="admin-result-grid">
-        <input class="score-input admin-home" type="number" min="0" max="20" value="${match.homeScore ?? ''}">
-        <div></div>
-        <input class="score-input admin-away" type="number" min="0" max="20" value="${match.awayScore ?? ''}">
-        <button class="btn btn-primary">Publier</button>
-      </div>
-    `;
-
-    card.querySelector('button').addEventListener('click', async () => {
-      const homeScore = card.querySelector('.admin-home').value;
-      const awayScore = card.querySelector('.admin-away').value;
-      if (homeScore === '' || awayScore === '') return;
-
-      await updateDoc(doc(db, 'matches', match.id), {
-        homeScore: Number(homeScore),
-        awayScore: Number(awayScore),
-        updatedAt: serverTimestamp()
-      });
+function buildRankingSeries(selectedUids) {
+  const labels = state.matches.map((_, i) => `M${i + 1}`);
+  const users = (selectedUids ? state.participants.filter(p => selectedUids.includes(p.uid)) : state.participants).map(p => ({ uid: p.uid, label: p.displayName || participantLabel(p.uid), values: [] }));
+  const cumulative = new Map(users.map(u => [u.uid, 0]));
+  state.matches.forEach(match => {
+    users.forEach(u => {
+      const pred = state.predictions.find(p => p.matchId === match.id && p.userId === u.uid);
+      const gained = pred ? computeMatchPoints(pred, match) : 0;
+      cumulative.set(u.uid, (cumulative.get(u.uid) || 0) + gained);
+      u.values.push(cumulative.get(u.uid));
     });
-
-    els.adminResults.appendChild(card);
   });
+  return { matchLabels: labels, series: users };
 }
 
-function getPrediction(userId, matchId) {
-  return state.predictions.find((p) => p.userId === userId && p.matchId === matchId) || null;
+function buildLeaderboardRows() {
+  const winnerMap = buildWinnerScoresMap();
+  return state.participants.map(p => {
+    const matchPoints = state.matches.reduce((sum, match) => {
+      const pred = state.predictions.find(x => x.matchId === match.id && x.userId === p.uid);
+      return sum + (pred ? computeMatchPoints(pred, match) : 0);
+    }, 0);
+    const winner = winnerMap.get(p.uid) || { score: 0, teamLabel: '', phaseLabel: '' };
+    const totalPoints = matchPoints + winner.score;
+    return { label: p.displayName || participantLabel(p.uid), matchPoints, winnerBonus: winner.score, winnerTeamLabel: winner.teamLabel, winnerPhaseLabel: winner.phaseLabel, totalPoints };
+  }).sort((a, b) => b.totalPoints - a.totalPoints || b.matchPoints - a.matchPoints || a.label.localeCompare(b.label));
 }
 
-function getRanking() {
-  return state.users
-    .filter((user) => user.role === 'participant' || user.role === 'admin')
-    .map((user) => ({
-      ...user,
-      ...getStatsForUser(user.uid)
-    }))
-    .sort((a, b) =>
-      b.points - a.points ||
-      b.exact - a.exact ||
-      b.outcome - a.outcome ||
-      (a.displayName || a.email).localeCompare(b.displayName || b.email)
-    );
-}
-
-function getStatsForUser(uid) {
-  const userPredictions = state.predictions.filter((p) => p.userId === uid);
-  let points = 0;
-  let exact = 0;
-  let outcome = 0;
-
-  state.matches.filter(isFinished).forEach((match) => {
-    const pred = userPredictions.find((p) => p.matchId === match.id);
-    if (!pred) return;
-    const score = scorePrediction(pred, match);
-    points += score;
-    if (score === 5) exact += 1;
-    if (score === 3) outcome += 1;
+function buildWinnerScoresMap() {
+  const grouped = new Map();
+  state.winnerPredictions.forEach(row => {
+    if (!grouped.has(row.userId)) grouped.set(row.userId, []);
+    grouped.get(row.userId).push(row);
   });
-
-  return { points, exact, outcome, predictions: userPredictions.length };
+  const map = new Map();
+  grouped.forEach((rows, uid) => map.set(uid, computeWinnerScore(rows, state.settings.actualWinner)));
+  return map;
 }
 
-function scorePrediction(pred, match) {
-  if (pred.home === match.homeScore && pred.away === match.awayScore) return 5;
-  return getOutcome(pred.home, pred.away) === getOutcome(match.homeScore, match.awayScore) ? 3 : 0;
+function computeWinnerScore(rows, actualWinner) {
+  if (!actualWinner) return { score: 0, teamLabel: '', phaseLabel: '' };
+  const sorted = [...rows].sort((a, b) => OLD_PHASES.findIndex(p => p.id === a.phaseId) - OLD_PHASES.findIndex(p => p.id === b.phaseId));
+  const found = sorted.find(r => r.team === actualWinner);
+  if (!found) return { score: 0, teamLabel: '', phaseLabel: '' };
+  const phase = OLD_PHASES.find(p => p.id === found.phaseId);
+  return { score: phase?.points || 0, teamLabel: TEAM_LABELS[found.team], phaseLabel: phase?.label || '' };
 }
 
-function getOutcome(home, away) {
-  if (home > away) return 'home';
-  if (home < away) return 'away';
-  return 'draw';
+function buildWinnerLeaderboardRows() {
+  const winnerMap = buildWinnerScoresMap();
+  return state.participants.map(p => {
+    const score = winnerMap.get(p.uid) || { score: 0, teamLabel: '', phaseLabel: '' };
+    return { label: p.displayName || participantLabel(p.uid), score: score.score, teamLabel: score.teamLabel, phaseLabel: score.phaseLabel };
+  }).filter(r => r.score > 0 || r.teamLabel).sort((a, b) => b.score - a.score || a.label.localeCompare(b.label));
 }
 
-function isFinished(match) {
-  return Number.isInteger(match.homeScore) && Number.isInteger(match.awayScore);
+function computeMatchPoints(prediction, match) {
+  const exact = Number(prediction.homeScore) === Number(match.homeScore) && Number(prediction.awayScore) === Number(match.awayScore);
+  if (exact) return 3;
+  const pred = Math.sign(Number(prediction.homeScore) - Number(prediction.awayScore));
+  const actual = Math.sign(Number(match.homeScore) - Number(match.awayScore));
+  return pred === actual ? 1 : 0;
 }
 
-function isLocked(match) {
-  return new Date(match.kickoff).getTime() <= Date.now() || isFinished(match);
+function participantLabel(uid) {
+  const user = state.participants.find(p => p.uid === uid);
+  return user?.displayName || `Participant ${uid.slice(0, 6)}`;
 }
 
-function matchStatus(match) {
-  if (isFinished(match)) return `Terminé ${match.homeScore}-${match.awayScore}`;
-  if (isLocked(match)) return 'Verrouillé';
-  return 'Ouvert';
+function slugify(text) {
+  return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
-function isAdmin() {
-  return state.profile?.role === 'admin';
+function toLocalInputValue(date) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function formatDate(iso) {
-  return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
-}
-
-function setFeedback(el, message, type) {
-  el.textContent = message;
-  el.className = `helper ${type}`;
-}
-
-function mapAuthError(error) {
-  const code = error?.code || '';
-  if (code.includes('invalid-credential')) return 'Email ou mot de passe incorrect.';
-  if (code.includes('email-already-in-use')) return 'Cet email est déjà utilisé.';
-  if (code.includes('weak-password')) return 'Mot de passe trop faible (6 caractères minimum).';
-  return error.message || 'Une erreur est survenue.';
+async function seedDemoData() {
+  if (!state.db) return;
+  const participants = [
+    { uid: 'demo_alice', displayName: 'Alice' },
+    { uid: 'demo_bob', displayName: 'Bob' },
+    { uid: 'demo_chloe', displayName: 'Chloé' },
+    { uid: 'demo_david', displayName: 'David' }
+  ];
+  await Promise.all(participants.map(u => setDoc(doc(state.db, 'users', u.uid), { ...u, createdAt: serverTimestamp() }, { merge: true })));
+  await setDoc(doc(state.db, 'settings', 'winnerGame'), { currentPhase: 'before_r8', actualWinner: 'ARG', aliveTeams: ['ARG','ESP','FRA','ENG','BRA','POR','GER','MAR'], winnerDeadline: new Date(Date.now()+86400000).toISOString(), updatedAt: serverTimestamp() }, { merge: true });
+  await Promise.all([
+    setDoc(doc(state.db, 'winnerPredictions', 'demo_alice_before_r16'), { userId: 'demo_alice', userLabel: 'Alice', phaseId: 'before_r16', team: 'BRA', createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true }),
+    setDoc(doc(state.db, 'winnerPredictions', 'demo_alice_before_r8'), { userId: 'demo_alice', userLabel: 'Alice', phaseId: 'before_r8', team: 'ARG', createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true }),
+    setDoc(doc(state.db, 'winnerPredictions', 'demo_bob_before_r16'), { userId: 'demo_bob', userLabel: 'Bob', phaseId: 'before_r16', team: 'ARG', createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true }),
+    setDoc(doc(state.db, 'winnerPredictions', 'demo_chloe_before_qf'), { userId: 'demo_chloe', userLabel: 'Chloé', phaseId: 'before_qf', team: 'ARG', createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true }),
+    setDoc(doc(state.db, 'winnerPredictions', 'demo_david_before_sf'), { userId: 'demo_david', userLabel: 'David', phaseId: 'before_sf', team: 'ARG', createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true })
+  ]);
 }
