@@ -11,18 +11,18 @@ const firebaseConfig = {
   appId: '1:944672750520:web:42a817af4260007814ad4d'
 };
 
-const W_ROUNDS = [
-  { id: 'r16', label: '1/16e' },
-  { id: 'r8', label: '1/8e' },
-  { id: 'qf', label: '1/4' },
-  { id: 'sf', label: '1/2' },
-  { id: 'final', label: 'Finale' }
-];
-const W_EMPTY = { r16: [], r8: [], qf: [], sf: [], final: [] };
-
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+const W_ROUNDS = [
+  { id: 'r16', label: '1/16e', slots: 16 },
+  { id: 'r8', label: '1/8e', slots: 8 },
+  { id: 'qf', label: '1/4', slots: 4 },
+  { id: 'sf', label: '1/2', slots: 2 },
+  { id: 'final', label: 'Finale', slots: 1 }
+];
+const W_EMPTY = { r16: [], r8: [], qf: [], sf: [], final: [] };
 
 const state = {
   authUser: null,
@@ -107,13 +107,21 @@ function bindUI() {
 
   els.authForm?.addEventListener('submit', async e => {
     e.preventDefault();
-    try { await signInWithEmailAndPassword(auth, els.email.value.trim(), els.password.value.trim()); setFeedback(els.authFeedback, 'Connexion réussie.', 'success'); }
-    catch (error) { setFeedback(els.authFeedback, mapAuthError(error), 'danger'); }
+    try {
+      await signInWithEmailAndPassword(auth, els.email.value.trim(), els.password.value.trim());
+      setFeedback(els.authFeedback, 'Connexion réussie.', 'success');
+    } catch (error) {
+      setFeedback(els.authFeedback, mapAuthError(error), 'danger');
+    }
   });
 
   els.registerBtn?.addEventListener('click', async () => {
-    try { await createUserWithEmailAndPassword(auth, els.email.value.trim(), els.password.value.trim()); setFeedback(els.authFeedback, 'Compte créé.', 'success'); }
-    catch (error) { setFeedback(els.authFeedback, mapAuthError(error), 'danger'); }
+    try {
+      await createUserWithEmailAndPassword(auth, els.email.value.trim(), els.password.value.trim());
+      setFeedback(els.authFeedback, 'Compte créé.', 'success');
+    } catch (error) {
+      setFeedback(els.authFeedback, mapAuthError(error), 'danger');
+    }
   });
 
   els.signOutBtn?.addEventListener('click', () => signOut(auth));
@@ -121,29 +129,37 @@ function bindUI() {
   els.profileForm?.addEventListener('submit', async e => {
     e.preventDefault();
     if (!state.authUser) return;
-    await setDoc(doc(db, 'users', state.authUser.uid), {
-      uid: state.authUser.uid,
-      email: state.authUser.email,
-      displayName: els.displayName.value.trim(),
-      role: els.roleSelect.value,
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-    setFeedback(els.profileFeedback, 'Profil enregistré.', 'success');
+    try {
+      await setDoc(doc(db, 'users', state.authUser.uid), {
+        uid: state.authUser.uid,
+        email: state.authUser.email,
+        displayName: els.displayName.value.trim(),
+        role: els.roleSelect.value,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      setFeedback(els.profileFeedback, 'Profil enregistré.', 'success');
+    } catch (error) {
+      setFeedback(els.profileFeedback, error.message, 'danger');
+    }
   });
 
   els.matchForm?.addEventListener('submit', async e => {
     e.preventDefault();
     if (!isAdmin()) return;
-    await addDoc(collection(db, 'matches'), {
-      home: els.homeTeam.value.trim(),
-      away: els.awayTeam.value.trim(),
-      kickoff: new Date(els.kickoff.value || Date.now()).toISOString(),
-      homeScore: null,
-      awayScore: null,
-      createdAt: serverTimestamp()
-    });
-    els.matchForm.reset();
-    setFeedback(els.matchFeedback, 'Match ajouté.', 'success');
+    try {
+      await addDoc(collection(db, 'matches'), {
+        home: els.homeTeam.value.trim(),
+        away: els.awayTeam.value.trim(),
+        kickoff: new Date(els.kickoff.value).toISOString(),
+        homeScore: null,
+        awayScore: null,
+        createdAt: serverTimestamp()
+      });
+      els.matchForm.reset();
+      setFeedback(els.matchFeedback, 'Match ajouté.', 'success');
+    } catch (error) {
+      setFeedback(els.matchFeedback, error.message, 'danger');
+    }
   });
 
   els.themeToggle?.addEventListener('click', () => {
@@ -151,51 +167,6 @@ function bindUI() {
     const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     root.setAttribute('data-theme', next);
     els.themeToggle.textContent = next === 'dark' ? '☀️' : '🌙';
-  });
-
-  els.winnerOnlyAlive?.addEventListener('change', renderWinnerUi);
-  els.winnerRound?.addEventListener('change', renderWinnerUi);
-
-  els.winnerForm?.addEventListener('submit', async e => {
-    e.preventDefault();
-    if (!state.authUser) return;
-    const roundId = els.winnerRound.value;
-    const team = els.winnerTeam.value;
-    if (!roundId || !team) return;
-    if (state.winnerSettings.deadline && Date.now() > new Date(state.winnerSettings.deadline).getTime()) {
-      setFeedback(els.winnerFeedback, 'Pronostics fermés.', 'danger');
-      return;
-    }
-    await setDoc(doc(db, 'winnerPredictions', `${state.authUser.uid}_${roundId}`), {
-      userId: state.authUser.uid,
-      roundId,
-      team,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-    setFeedback(els.winnerFeedback, 'Choix enregistré.', 'success');
-  });
-
-  els.winnerClearBtn?.addEventListener('click', async () => {
-    if (!state.authUser) return;
-    const roundId = els.winnerRound.value;
-    if (!roundId) return;
-    await deleteDoc(doc(db, 'winnerPredictions', `${state.authUser.uid}_${roundId}`));
-    setFeedback(els.winnerFeedback, 'Choix effacé.', 'success');
-  });
-
-  els.winnerAdminForm?.addEventListener('submit', async e => {
-    e.preventDefault();
-    if (!isAdmin()) return;
-    const teamsByRound = buildWinnerTeamsFromUI();
-    await setDoc(doc(db, 'settings', 'winnerTournament'), {
-      deadline: els.winnerDeadline?.value ? new Date(els.winnerDeadline.value).toISOString() : '',
-      activeRound: els.winnerActiveRound?.value || 'r16',
-      actualWinner: els.winnerFinalTeam?.value || '',
-      teamsByRound,
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-    setFeedback(els.matchFeedback, 'Tournoi enregistré.', 'success');
   });
 }
 
@@ -225,26 +196,36 @@ function watchAuth() {
 
 function subscribeData(uid) {
   const unsubUsers = onSnapshot(query(collection(db, 'users')), snap => {
-    state.users = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    state.users = snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
     state.profile = state.users.find(u => u.uid === uid) || null;
     render();
   });
+
   const unsubMatches = onSnapshot(query(collection(db, 'matches'), orderBy('kickoff')), snap => {
-    state.matches = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    state.matches = snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
     render();
   });
+
   const unsubPredictions = onSnapshot(query(collection(db, 'predictions')), snap => {
-    state.predictions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    state.predictions = snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
     render();
   });
+
   const unsubWinnerPredictions = onSnapshot(query(collection(db, 'winnerPredictions')), snap => {
-    state.winnerPredictions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    state.winnerPredictions = snap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
     render();
   });
+
   const unsubSettings = onSnapshot(doc(db, 'settings', 'winnerTournament'), snap => {
-    if (snap.exists()) state.winnerSettings = { ...state.winnerSettings, ...sanitizeWinnerSettings(snap.data()) };
+    if (snap.exists()) {
+      state.winnerSettings = {
+        ...state.winnerSettings,
+        ...normalizeWinnerSettings(snap.data())
+      };
+    }
     render();
   });
+
   state.unsubscribers = [unsubUsers, unsubMatches, unsubPredictions, unsubWinnerPredictions, unsubSettings];
 }
 
@@ -266,10 +247,7 @@ function render() {
   populateRankingParticipantsSelect();
   renderRankingEvolution();
   renderAdminResults();
-  renderWinnerTournament();
-  renderWinnerUi();
-  renderWinnerHistory();
-  renderWinnerRanking();
+  renderWinnerModule();
 }
 
 function renderKpis() {
@@ -281,7 +259,13 @@ function renderKpis() {
     ['Matches', state.matches.length, `${finished} terminés`],
     ['Pronostics', state.predictions.length, 'Temps réel'],
     ['Leader', leader?.displayName || '—', leader ? `${leader.points} points` : '']
-  ].map(([label, value, meta]) => `<article class="card stat-card"><span class="stat-label">${label}</span><strong class="stat-value">${value}</strong><span class="stat-help">${meta}</span></article>`).join('');
+  ].map(([label, value, meta]) => `
+    <article class="card stat-card">
+      <span class="stat-label">${label}</span>
+      <strong class="stat-value">${value}</strong>
+      <span class="stat-help">${meta}</span>
+    </article>
+  `).join('');
 }
 
 function renderDashboard() {
@@ -300,7 +284,11 @@ function renderDashboard() {
 }
 
 function renderMatches() {
-  const matches = state.matches.filter(match => state.filter === 'open' ? !isFinished(match) && !isLocked(match) : state.filter === 'finished' ? isFinished(match) : true);
+  const matches = state.matches.filter(match => {
+    if (state.filter === 'open') return !isFinished(match) && !isLocked(match);
+    if (state.filter === 'finished') return isFinished(match);
+    return true;
+  });
   els.matchesList.innerHTML = '';
   matches.forEach(match => els.matchesList.appendChild(buildMatchCard(match)));
 }
@@ -318,9 +306,17 @@ function buildMatchCard(match) {
       <div><span class="pill">${matchStatus(match)}</span></div>
     </div>
     <div class="match-grid">
-      <div class="team-col"><span>${match.home}</span><input class="score-input home-score" type="number" min="0" max="20" value="${pred?.home ?? ''}" ${isLocked(match) ? 'disabled' : ''} /></div>
-      <div class="team-col"><span>${match.away}</span><input class="score-input away-score" type="number" min="0" max="20" value="${pred?.away ?? ''}" ${isLocked(match) ? 'disabled' : ''} /></div>
-      <div><button class="btn btn-primary save-btn" ${isLocked(match) ? 'disabled' : ''}>Enregistrer</button></div>
+      <div class="team-col">
+        <span>${match.home}</span>
+        <input class="score-input home-score" type="number" min="0" max="20" value="${pred?.home ?? ''}" ${isLocked(match) ? 'disabled' : ''} />
+      </div>
+      <div class="team-col">
+        <span>${match.away}</span>
+        <input class="score-input away-score" type="number" min="0" max="20" value="${pred?.away ?? ''}" ${isLocked(match) ? 'disabled' : ''} />
+      </div>
+      <div>
+        <button class="btn btn-primary save-btn" ${isLocked(match) ? 'disabled' : ''}>Enregistrer</button>
+      </div>
     </div>
     ${isFinished(match) ? `<div class="muted">Résultat officiel : ${match.homeScore} - ${match.awayScore}</div>` : ''}
   `;
@@ -341,14 +337,20 @@ function buildMatchCard(match) {
 
 function renderRanking() {
   const rows = getRanking();
-  els.rankingBody.innerHTML = rows.length ? rows.map((u, i) => `<tr><td>${i + 1}</td><td>${u.displayName || u.email}</td><td>${u.points}</td><td>${u.exact}</td><td>${u.outcome}</td></tr>`).join('') : '<tr><td colspan="5" class="empty-cell">Aucun participant pour le moment.</td></tr>';
+  els.rankingBody.innerHTML = rows.length
+    ? rows.map((u, i) => `<tr><td>${i + 1}</td><td>${u.displayName || u.email}</td><td>${u.points}</td><td>${u.exact}</td><td>${u.outcome}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="empty-cell">Aucun participant pour le moment.</td></tr>';
 }
 
 function populateRankingParticipantsSelect() {
   const selected = [...els.rankingParticipants.selectedOptions].map(o => o.value);
   const participants = state.users.filter(u => u.role === 'participant' || u.role === 'admin');
   els.rankingParticipants.innerHTML = `<option value="all">Tous les participants</option>` + participants.map(u => `<option value="${u.uid}">${u.displayName || u.email}</option>`).join('');
-  if (selected.length) [...els.rankingParticipants.options].forEach(opt => opt.selected = selected.includes(opt.value) || (selected.includes('all') && opt.value === 'all'));
+  if (selected.length) {
+    [...els.rankingParticipants.options].forEach(opt => {
+      opt.selected = selected.includes(opt.value) || (selected.includes('all') && opt.value === 'all');
+    });
+  }
 }
 
 function renderRankingEvolution() {
@@ -358,7 +360,25 @@ function renderRankingEvolution() {
     els.rankingEvolutionChart.innerHTML = '<div class="muted">Aucun match terminé pour le moment.</div>';
     return;
   }
-  Plotly.newPlot(els.rankingEvolutionChart, series.map(s => ({ x: labels, y: s.values, mode: 'lines+markers', name: s.name, line: { width: 2 }, marker: { size: 6 } })), { margin: { l: 50, r: 20, t: 20, b: 40 }, xaxis: { title: { text: 'Matchs' } }, yaxis: { title: { text: 'Points' } }, legend: { orientation: 'h' }, hovermode: 'x unified' }, { responsive: true, displayModeBar: false });
+  Plotly.newPlot(
+    els.rankingEvolutionChart,
+    series.map(s => ({
+      x: labels,
+      y: s.values,
+      mode: 'lines+markers',
+      name: s.name,
+      line: { width: 2 },
+      marker: { size: 6 }
+    })),
+    {
+      margin: { l: 50, r: 20, t: 20, b: 40 },
+      xaxis: { title: { text: 'Matchs' } },
+      yaxis: { title: { text: 'Points' } },
+      legend: { orientation: 'h' },
+      hovermode: 'x unified'
+    },
+    { responsive: true, displayModeBar: false }
+  );
 }
 
 function buildEvolutionByMatch() {
@@ -369,6 +389,7 @@ function buildEvolutionByMatch() {
   const cumulative = new Map(visible.map(u => [u.uid, 0]));
   const labels = finishedMatches.map((_, i) => `M${i + 1}`);
   const series = visible.map(u => ({ uid: u.uid, name: u.displayName || u.email, values: [] }));
+
   finishedMatches.forEach(match => {
     visible.forEach(u => {
       const pred = state.predictions.find(p => p.userId === u.uid && p.matchId === match.id);
@@ -376,6 +397,7 @@ function buildEvolutionByMatch() {
     });
     series.forEach(s => s.values.push(cumulative.get(s.uid) || 0));
   });
+
   return { labels, series };
 }
 
@@ -385,41 +407,177 @@ function renderAdminResults() {
     const card = document.createElement('div');
     card.className = 'card result-card';
     card.innerHTML = `
-      <div class="row wrap section-gap"><div><strong>${match.home} vs ${match.away}</strong><div class="muted">${formatDate(match.kickoff)}</div></div><div><span class="pill">${matchStatus(match)}</span></div></div>
-      <div class="admin-result-grid"><input class="score-input admin-home" type="number" min="0" max="20" value="${match.homeScore ?? ''}" /><input class="score-input admin-away" type="number" min="0" max="20" value="${match.awayScore ?? ''}" /><button class="btn btn-primary">Publier</button></div>
+      <div class="row wrap section-gap">
+        <div>
+          <strong>${match.home} vs ${match.away}</strong>
+          <div class="muted">${formatDate(match.kickoff)}</div>
+        </div>
+        <div><span class="pill">${matchStatus(match)}</span></div>
+      </div>
+      <div class="admin-result-grid">
+        <input class="score-input admin-home" type="number" min="0" max="20" value="${match.homeScore ?? ''}" />
+        <input class="score-input admin-away" type="number" min="0" max="20" value="${match.awayScore ?? ''}" />
+        <button class="btn btn-primary">Publier</button>
+      </div>
     `;
     card.querySelector('button').addEventListener('click', async () => {
       const homeScore = card.querySelector('.admin-home').value;
       const awayScore = card.querySelector('.admin-away').value;
       if (homeScore === '' || awayScore === '') return;
-      await updateDoc(doc(db, 'matches', match.id), { homeScore: Number(homeScore), awayScore: Number(awayScore), updatedAt: serverTimestamp() });
+      await updateDoc(doc(db, 'matches', match.id), {
+        homeScore: Number(homeScore),
+        awayScore: Number(awayScore),
+        updatedAt: serverTimestamp()
+      });
     });
     els.adminResults.appendChild(card);
   });
 }
 
+function normalizeWinnerSettings(raw = {}) {
+  return {
+    deadline: raw.deadline || '',
+    activeRound: raw.activeRound || 'r16',
+    actualWinner: raw.actualWinner || '',
+    teamsByRound: {
+      r16: Array.isArray(raw.teamsByRound?.r16) ? raw.teamsByRound.r16 : [],
+      r8: Array.isArray(raw.teamsByRound?.r8) ? raw.teamsByRound.r8 : [],
+      qf: Array.isArray(raw.teamsByRound?.qf) ? raw.teamsByRound.qf : [],
+      sf: Array.isArray(raw.teamsByRound?.sf) ? raw.teamsByRound.sf : [],
+      final: Array.isArray(raw.teamsByRound?.final) ? raw.teamsByRound.final : []
+    }
+  };
+}
+
+function getWinnerTeams(roundId, settings = state.winnerSettings) {
+  return settings.teamsByRound?.[roundId] || [];
+}
+
+function getAllWinnerTeams(settings = state.winnerSettings) {
+  return [...new Set(Object.values(settings.teamsByRound || W_EMPTY).flat())].filter(Boolean);
+}
+
+function getNextWinnerRound(roundId) {
+  const idx = W_ROUNDS.findIndex(r => r.id === roundId);
+  return idx >= 0 && idx < W_ROUNDS.length - 1 ? W_ROUNDS[idx + 1].id : 'final';
+}
+
+function ensureWinnerAdminBlock() {
+  const host = document.getElementById('winner-tournament');
+  if (!host) return null;
+  if (!document.getElementById('winner-admin-bracket')) {
+    host.insertAdjacentHTML('beforebegin', `
+      <article class="card" id="winner-admin-bracket">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Admin</p>
+            <h3>Saisie du bracket</h3>
+          </div>
+        </div>
+        <p class="muted">Saisis les équipes qualifiées à chaque tour, puis enregistre le bracket.</p>
+        <div id="winner-admin-bracket-grid" class="winner-bracket-grid"></div>
+      </article>
+    `);
+  }
+  return document.getElementById('winner-admin-bracket-grid');
+}
+
+function renderWinnerAdminBracket(settings = state.winnerSettings) {
+  const grid = ensureWinnerAdminBlock();
+  if (!grid) return;
+  const data = settings.teamsByRound || W_EMPTY;
+  grid.innerHTML = W_ROUNDS.map(round => {
+    const teams = Array.isArray(data[round.id]) ? data[round.id] : [];
+    const rows = Array.from({ length: round.slots }, (_, i) => {
+      const val = teams[i] || '';
+      return `
+        <label class="winner-slot">
+          <span>${round.label} #${i + 1}</span>
+          <input class="winner-team-input" data-round="${round.id}" data-index="${i}" type="text" value="${val}" placeholder="Équipe ${i + 1}">
+        </label>
+      `;
+    }).join('');
+    return `
+      <article class="card winner-round-card" data-round="${round.id}">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Tour</p>
+            <h3>${round.label}</h3>
+          </div>
+        </div>
+        <div class="winner-round-grid">${rows}</div>
+      </article>
+    `;
+  }).join('');
+}
+
+function readWinnerBracketFromUI() {
+  const data = { ...W_EMPTY };
+  document.querySelectorAll('.winner-team-input[data-round]').forEach(input => {
+    const round = input.dataset.round;
+    const idx = Number(input.dataset.index);
+    if (!data[round]) data[round] = [];
+    data[round][idx] = input.value.trim();
+  });
+  Object.keys(data).forEach(round => {
+    data[round] = data[round].filter(Boolean);
+  });
+  return data;
+}
+
+function computeWinnerScore(rows) {
+  const s = state.winnerSettings;
+  let points = 0;
+  let choice = '—';
+  for (const round of W_ROUNDS) {
+    const pred = rows.find(r => r.roundId === round.id);
+    if (!pred) continue;
+    choice = pred.team;
+    if (round.id === 'final') {
+      points += 10;
+      continue;
+    }
+    const nextTeams = getWinnerTeams(getNextWinnerRound(round.id), s);
+    if (nextTeams.includes(pred.team)) points += 10;
+  }
+  return { points, choice };
+}
+
 function renderWinnerTournament() {
   const s = state.winnerSettings;
-  els.winnerTournament.innerHTML = W_ROUNDS.map((round, idx) => {
-    const teams = s.teamsByRound?.[round.id] || [];
-    const nextTeams = s.teamsByRound?.[W_ROUNDS[idx + 1]?.id] || [];
+  const host = document.getElementById('winner-tournament');
+  if (!host) return;
+  host.innerHTML = W_ROUNDS.map((round, idx) => {
+    const teams = getWinnerTeams(round.id, s);
+    const nextTeams = getWinnerTeams(W_ROUNDS[idx + 1]?.id || 'final', s);
     const rows = teams.map((team, i) => {
       const alive = round.id === 'final' ? true : nextTeams.includes(team);
-      return `<div class="winner-team-row ${alive ? 'alive' : 'out'}">
-        <input class="winner-team-input" type="text" value="${team || ''}" placeholder="Équipe ${i + 1}" />
-        <strong>${round.id === 'final' ? 'Finaliste' : (alive ? 'Qualifié' : 'Éliminé')}</strong>
-      </div>`;
+      return `
+        <div class="winner-team-row ${alive ? 'alive' : 'out'}">
+          <input class="winner-team-input" type="text" value="${team || ''}" placeholder="Équipe ${i + 1}" />
+          <strong>${round.id === 'final' ? 'Finaliste' : (alive ? 'Qualifié' : 'Éliminé')}</strong>
+        </div>
+      `;
     }).join('') || '<div class="muted">Aucune équipe pour ce tour.</div>';
-    return `<article class="card winner-round-card" data-round="${round.id}">
-      <div class="section-head"><div><p class="eyebrow">Tour</p><h3>${round.label}</h3></div></div>
-      <div class="winner-round-grid">${rows}</div>
-    </article>`;
+    return `
+      <article class="card winner-round-card" data-round="${round.id}">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Tour</p>
+            <h3>${round.label}</h3>
+          </div>
+        </div>
+        <div class="winner-round-grid">${rows}</div>
+      </article>
+    `;
   }).join('');
 }
 
 function renderWinnerUi() {
-  if (els.winnerRound.options.length === 0) {
+  if (els.winnerRound?.options.length === 0) {
     els.winnerRound.innerHTML = W_ROUNDS.map(r => `<option value="${r.id}">${r.label}</option>`).join('');
+  }
+  if (els.winnerActiveRound?.options.length === 0) {
     els.winnerActiveRound.innerHTML = W_ROUNDS.map(r => `<option value="${r.id}">${r.label}</option>`).join('');
   }
   els.winnerRound.value = state.winnerSettings.activeRound || 'r16';
@@ -454,75 +612,161 @@ function renderWinnerRanking() {
     const score = computeWinnerScore(state.winnerPredictions.filter(p => p.userId === u.uid));
     return { label: u.displayName || u.email, points: score.points, choice: score.choice };
   }).sort((a, b) => b.points - a.points || a.label.localeCompare(b.label));
-  els.winnerRanking.innerHTML = rows.length ? rows.map(r => `<tr><td>${r.label}</td><td>${r.points}</td><td>${r.choice}</td></tr>`).join('') : '<tr><td colspan="3" class="empty-cell">Aucun point pour le moment.</td></tr>';
+  els.winnerRanking.innerHTML = rows.length
+    ? rows.map(r => `<tr><td>${r.label}</td><td>${r.points}</td><td>${r.choice}</td></tr>`).join('')
+    : '<tr><td colspan="3" class="empty-cell">Aucun point pour le moment.</td></tr>';
 }
 
-function computeWinnerScore(rows) {
-  const s = state.winnerSettings;
-  let points = 0;
-  let choice = '—';
-  for (const round of W_ROUNDS) {
-    const pred = rows.find(r => r.roundId === round.id);
-    if (!pred) continue;
-    choice = pred.team;
-    if (round.id === 'final') {
-      points += 10;
-      continue;
-    }
-    const nextTeams = getWinnerTeams(W_ROUNDS[W_ROUNDS.findIndex(r => r.id === round.id) + 1]?.id || 'final', s);
-    if (nextTeams.includes(pred.team)) points += 10;
+async function saveWinnerTournament() {
+  if (!isAdmin()) return;
+  const teamsByRound = readWinnerBracketFromUI();
+  await setDoc(doc(db, 'settings', 'winnerTournament'), {
+    deadline: els.winnerDeadline?.value ? new Date(els.winnerDeadline.value).toISOString() : '',
+    activeRound: els.winnerActiveRound?.value || 'r16',
+    actualWinner: els.winnerFinalTeam?.value || '',
+    teamsByRound,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+}
+
+function attachWinnerHandlers() {
+  if (els.winnerOnlyAlive && !els.winnerOnlyAlive.dataset.bound) {
+    els.winnerOnlyAlive.dataset.bound = '1';
+    els.winnerOnlyAlive.addEventListener('change', renderWinnerUi);
   }
-  return { points, choice };
+  if (els.winnerRound && !els.winnerRound.dataset.bound) {
+    els.winnerRound.dataset.bound = '1';
+    els.winnerRound.addEventListener('change', renderWinnerUi);
+  }
+  if (els.winnerForm && !els.winnerForm.dataset.bound) {
+    els.winnerForm.dataset.bound = '1';
+    els.winnerForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      if (!state.authUser) return;
+      const roundId = els.winnerRound.value;
+      const team = els.winnerTeam.value;
+      if (!roundId || !team) return;
+      if (state.winnerSettings.deadline && Date.now() > new Date(state.winnerSettings.deadline).getTime()) {
+        setFeedback(els.winnerFeedback, 'Pronostics fermés.', 'danger');
+        return;
+      }
+      await setDoc(doc(db, 'winnerPredictions', `${state.authUser.uid}_${roundId}`), {
+        userId: state.authUser.uid,
+        roundId,
+        team,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      setFeedback(els.winnerFeedback, 'Choix enregistré.', 'success');
+    });
+  }
+  if (els.winnerClearBtn && !els.winnerClearBtn.dataset.bound) {
+    els.winnerClearBtn.dataset.bound = '1';
+    els.winnerClearBtn.addEventListener('click', async () => {
+      if (!state.authUser) return;
+      const roundId = els.winnerRound.value;
+      if (!roundId) return;
+      await deleteDoc(doc(db, 'winnerPredictions', `${state.authUser.uid}_${roundId}`));
+      setFeedback(els.winnerFeedback, 'Choix effacé.', 'success');
+    });
+  }
+  if (els.winnerAdminForm && !els.winnerAdminForm.dataset.bound) {
+    els.winnerAdminForm.dataset.bound = '1';
+    els.winnerAdminForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      await saveWinnerTournament();
+      setFeedback(els.matchFeedback, 'Bracket enregistré.', 'success');
+    });
+  }
 }
 
-function getWinnerTeams(roundId, settings = state.winnerSettings) {
-  return settings.teamsByRound?.[roundId] || [];
+function renderWinnerModule() {
+  renderWinnerAdminBracket();
+  renderWinnerTournament();
+  renderWinnerUi();
+  renderWinnerHistory();
+  renderWinnerRanking();
+  attachWinnerHandlers();
 }
 
-function getAllWinnerTeams(settings = state.winnerSettings) {
-  return [...new Set(Object.values(settings.teamsByRound || W_EMPTY).flat())].filter(Boolean);
+function getPrediction(userId, matchId) {
+  return state.predictions.find(p => p.userId === userId && p.matchId === matchId) || null;
 }
 
-function buildWinnerTeamsFromUI() {
-  const root = document.getElementById('view-winner');
-  const data = { ...W_EMPTY };
-  W_ROUNDS.forEach((round, idx) => {
-    const block = root.querySelector(`.winner-round-card[data-round="${round.id}"]`);
-    const inputs = block ? [...block.querySelectorAll('input.winner-team-input')] : [];
-    data[round.id] = inputs.map(i => i.value.trim()).filter(Boolean);
-    if (round.id !== 'final') {
-      const next = W_ROUNDS[idx + 1]?.id;
-      if (next && !data[next].length && data[round.id].length) data[next] = data[round.id].slice(0, Math.ceil(data[round.id].length / 2));
-    }
+function getRanking() {
+  return state.users
+    .filter(u => u.role === 'participant' || u.role === 'admin')
+    .map(u => ({
+      ...u,
+      ...getStatsForUser(u.uid)
+    }))
+    .sort((a, b) => b.points - a.points || a.exact - b.exact || a.outcome - b.outcome || (a.displayName || a.email).localeCompare(b.displayName || b.email));
+}
+
+function getStatsForUser(uid) {
+  const userPredictions = state.predictions.filter(p => p.userId === uid);
+  let points = 0;
+  let exact = 0;
+  let outcome = 0;
+  state.matches.filter(isFinished).forEach(match => {
+    const pred = userPredictions.find(p => p.matchId === match.id);
+    if (!pred) return;
+    const score = scorePrediction(pred, match);
+    points += score;
+    if (score === 5) exact += 1;
+    if (score === 3) outcome += 1;
   });
-  return data;
+  return { points, exact, outcome, predictions: userPredictions.length };
 }
 
-function sanitizeWinnerSettings(raw) {
-  return {
-    deadline: raw?.deadline || '',
-    activeRound: raw?.activeRound || 'r16',
-    actualWinner: raw?.actualWinner || '',
-    teamsByRound: {
-      r16: Array.isArray(raw?.teamsByRound?.r16) ? raw.teamsByRound.r16 : [],
-      r8: Array.isArray(raw?.teamsByRound?.r8) ? raw.teamsByRound.r8 : [],
-      qf: Array.isArray(raw?.teamsByRound?.qf) ? raw.teamsByRound.qf : [],
-      sf: Array.isArray(raw?.teamsByRound?.sf) ? raw.teamsByRound.sf : [],
-      final: Array.isArray(raw?.teamsByRound?.final) ? raw.teamsByRound.final : []
-    }
-  };
+function scorePrediction(pred, match) {
+  if (pred.home === match.homeScore && pred.away === match.awayScore) return 5;
+  return getOutcome(pred.home, pred.away) === getOutcome(match.homeScore, match.awayScore) ? 3 : 0;
 }
 
-function getPrediction(userId, matchId) { return state.predictions.find(p => p.userId === userId && p.matchId === matchId) || null; }
-function getRanking() { return state.users.filter(u => u.role === 'participant' || u.role === 'admin').map(u => { const points = state.matches.filter(isFinished).reduce((sum, match) => { const pred = getPrediction(u.uid, match.id); return sum + (pred ? scorePrediction(pred, match) : 0); }, 0); return { ...u, points, exact: 0, outcome: 0 }; }).sort((a, b) => b.points - a.points || (a.displayName || '').localeCompare(b.displayName || '')); }
-function getStatsForUser(uid) { const userPredictions = state.predictions.filter(p => p.userId === uid); let points = 0, exact = 0, outcome = 0; state.matches.filter(isFinished).forEach(match => { const pred = userPredictions.find(p => p.matchId === match.id); if (!pred) return; const score = scorePrediction(pred, match); points += score; if (score === 5) exact++; if (score === 3) outcome++; }); return { points, exact, outcome, predictions: userPredictions.length }; }
-function scorePrediction(pred, match) { if (pred.home === match.homeScore && pred.away === match.awayScore) return 5; return getOutcome(pred.home, pred.away) === getOutcome(match.homeScore, match.awayScore) ? 3 : 0; }
-function getOutcome(home, away) { if (home > away) return 'home'; if (home < away) return 'away'; return 'draw'; }
-function isFinished(match) { return Number.isInteger(match.homeScore) && Number.isInteger(match.awayScore); }
-function isLocked(match) { return new Date(match.kickoff).getTime() <= Date.now() || isFinished(match); }
-function matchStatus(match) { if (isFinished(match)) return `Terminé ${match.homeScore}-${match.awayScore}`; if (isLocked(match)) return 'Verrouillé'; return 'Ouvert'; }
-function isAdmin() { return state.profile?.role === 'admin'; }
-function formatDate(iso) { return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }); }
-function setFeedback(el, message, type) { if (!el) return; el.textContent = message; el.className = `helper ${type}`; }
-function mapAuthError(error) { const code = error?.code || ''; if (code.includes('invalid-credential')) return 'Email ou mot de passe incorrect.'; if (code.includes('email-already-in-use')) return 'Cet email est déjà utilisé.'; if (code.includes('weak-password')) return 'Mot de passe trop faible. 6 caractères minimum.'; return error.message || 'Une erreur est survenue.'; }
-function toLocalInputValue(date) { const p = n => String(n).padStart(2, '0'); return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}T${p(date.getHours())}:${p(date.getMinutes())}`; }
+function getOutcome(home, away) {
+  if (home > away) return 'home';
+  if (home < away) return 'away';
+  return 'draw';
+}
+
+function isFinished(match) {
+  return Number.isInteger(match.homeScore) && Number.isInteger(match.awayScore);
+}
+
+function isLocked(match) {
+  return new Date(match.kickoff).getTime() <= Date.now() || isFinished(match);
+}
+
+function matchStatus(match) {
+  if (isFinished(match)) return `Terminé ${match.homeScore}-${match.awayScore}`;
+  if (isLocked(match)) return 'Verrouillé';
+  return 'Ouvert';
+}
+
+function isAdmin() {
+  return state.profile?.role === 'admin';
+}
+
+function formatDate(iso) {
+  return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function setFeedback(el, message, type) {
+  if (!el) return;
+  el.textContent = message;
+  el.className = `helper ${type}`;
+}
+
+function mapAuthError(error) {
+  const code = error?.code || '';
+  if (code.includes('invalid-credential')) return 'Email ou mot de passe incorrect.';
+  if (code.includes('email-already-in-use')) return 'Cet email est déjà utilisé.';
+  if (code.includes('weak-password')) return 'Mot de passe trop faible. 6 caractères minimum.';
+  return error.message || 'Une erreur est survenue.';
+}
+
+function toLocalInputValue(date) {
+  const p = n => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}T${p(date.getHours())}:${p(date.getMinutes())}`;
+}
