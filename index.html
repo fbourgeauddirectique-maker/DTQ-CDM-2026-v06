@@ -57,6 +57,7 @@
                         <button class="active" data-view="dashboard">Tableau de bord</button>
                         <button data-view="matches">Matches</button>
                         <button data-view="ranking">Classement</button>
+                        <button data-view="winner">Vainqueur</button>
                         <button data-view="admin">Admin</button>
                     </nav>
 
@@ -141,6 +142,82 @@
                         </article>
                     </div>
 
+                    <div class="view" id="view-winner">
+                        <article class="card">
+                            <div class="section-head">
+                                <div>
+                                    <h2>Vainqueur</h2>
+                                    <p class="muted">Tableau de tournoi indépendant du classement général.</p>
+                                </div>
+                                <div class="badge" id="winner-status">Hors ligne</div>
+                            </div>
+
+                            <div class="grid two-cols section-gap">
+                                <article class="card">
+                                    <h3>Tableau de tournoi</h3>
+                                    <div id="winner-tournament" class="list"></div>
+                                </article>
+
+                                <article class="card">
+                                    <h3>Pronostic par tour</h3>
+                                    <form id="winner-form" class="form-grid">
+                                        <label>
+                                            <span>Tour</span>
+                                            <select id="winner-round" class="input"></select>
+                                        </label>
+                                        <label>
+                                            <span>Équipe</span>
+                                            <select id="winner-team" class="input"></select>
+                                        </label>
+                                        <div class="row wrap">
+                                            <label class="helper" style="display:flex;align-items:center;gap:.5rem;">
+                                                <input type="checkbox" id="winner-only-alive" checked>
+                                                <span>Équipes encore en course</span>
+                                            </label>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary">Enregistrer mon choix</button>
+                                        <button type="button" class="btn" id="winner-clear-btn">Effacer ce tour</button>
+                                    </form>
+                                    <p class="helper" id="winner-feedback"></p>
+                                </article>
+                            </div>
+
+                            <div class="grid two-cols section-gap">
+                                <article class="card">
+                                    <h3>Mes pronostics Vainqueur</h3>
+                                    <div class="table-wrap">
+                                        <table>
+                                            <thead>
+                                                <tr>
+                                                    <th>Tour</th>
+                                                    <th>Choix</th>
+                                                    <th>Statut</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="winner-history"></tbody>
+                                        </table>
+                                    </div>
+                                </article>
+
+                                <article class="card">
+                                    <h3>Classement Vainqueur</h3>
+                                    <div class="table-wrap">
+                                        <table>
+                                            <thead>
+                                                <tr>
+                                                    <th>Participant</th>
+                                                    <th>Points</th>
+                                                    <th>Dernier choix valide</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="winner-ranking"></tbody>
+                                        </table>
+                                    </div>
+                                </article>
+                            </div>
+                        </article>
+                    </div>
+
                     <div class="view" id="view-admin">
                         <div class="grid two-cols section-gap">
                             <article class="card">
@@ -182,6 +259,25 @@
                                     <button type="submit" class="btn btn-primary">Ajouter le match</button>
                                 </form>
                                 <p class="helper" id="match-feedback"></p>
+
+                                <hr style="margin:1rem 0;border:none;border-top:1px solid rgba(0,0,0,.08)">
+
+                                <h3>Tournoi Vainqueur</h3>
+                                <form id="winner-admin-form" class="form-grid">
+                                    <label>
+                                        <span>Date et heure de fin des pronostics</span>
+                                        <input id="winner-deadline" class="input" type="datetime-local">
+                                    </label>
+                                    <label>
+                                        <span>Tour actif</span>
+                                        <select id="winner-active-round" class="input"></select>
+                                    </label>
+                                    <label>
+                                        <span>Équipe gagnante finale</span>
+                                        <select id="winner-final-team" class="input"></select>
+                                    </label>
+                                    <button type="submit" class="btn btn-primary">Enregistrer le tournoi</button>
+                                </form>
                             </article>
                         </div>
 
