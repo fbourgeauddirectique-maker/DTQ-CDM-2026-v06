@@ -11,15 +11,14 @@ const firebaseConfig = {
   appId: '1:944672750520:web:42a817af4260007814ad4d'
 };
 
-const ROUNDS = [
-  { id: 'r16', label: '1/16e', points: 10 },
-  { id: 'r8', label: '1/8e', points: 10 },
-  { id: 'qf', label: '1/4', points: 10 },
-  { id: 'sf', label: '1/2', points: 10 },
-  { id: 'final', label: 'Finale', points: 10 }
+const W_ROUNDS = [
+  { id: 'r16', label: '1/16e' },
+  { id: 'r8', label: '1/8e' },
+  { id: 'qf', label: '1/4' },
+  { id: 'sf', label: '1/2' },
+  { id: 'final', label: 'Finale' }
 ];
-
-const EMPTY_BRACKET = { r16: [], r8: [], qf: [], sf: [], final: [] };
+const W_EMPTY = { r16: [], r8: [], qf: [], sf: [], final: [] };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -32,7 +31,7 @@ const state = {
   matches: [],
   predictions: [],
   winnerPredictions: [],
-  winnerSettings: { deadline: '', activeRound: 'r16', actualWinner: '', teamsByRound: { ...EMPTY_BRACKET } },
+  winnerSettings: { deadline: '', activeRound: 'r16', actualWinner: '', teamsByRound: { ...W_EMPTY } },
   filter: 'all',
   unsubscribers: []
 };
@@ -108,21 +107,13 @@ function bindUI() {
 
   els.authForm?.addEventListener('submit', async e => {
     e.preventDefault();
-    try {
-      await signInWithEmailAndPassword(auth, els.email.value.trim(), els.password.value.trim());
-      setFeedback(els.authFeedback, 'Connexion réussie.', 'success');
-    } catch (error) {
-      setFeedback(els.authFeedback, mapAuthError(error), 'danger');
-    }
+    try { await signInWithEmailAndPassword(auth, els.email.value.trim(), els.password.value.trim()); setFeedback(els.authFeedback, 'Connexion réussie.', 'success'); }
+    catch (error) { setFeedback(els.authFeedback, mapAuthError(error), 'danger'); }
   });
 
   els.registerBtn?.addEventListener('click', async () => {
-    try {
-      await createUserWithEmailAndPassword(auth, els.email.value.trim(), els.password.value.trim());
-      setFeedback(els.authFeedback, 'Compte créé.', 'success');
-    } catch (error) {
-      setFeedback(els.authFeedback, mapAuthError(error), 'danger');
-    }
+    try { await createUserWithEmailAndPassword(auth, els.email.value.trim(), els.password.value.trim()); setFeedback(els.authFeedback, 'Compte créé.', 'success'); }
+    catch (error) { setFeedback(els.authFeedback, mapAuthError(error), 'danger'); }
   });
 
   els.signOutBtn?.addEventListener('click', () => signOut(auth));
@@ -168,13 +159,13 @@ function bindUI() {
   els.winnerForm?.addEventListener('submit', async e => {
     e.preventDefault();
     if (!state.authUser) return;
+    const roundId = els.winnerRound.value;
+    const team = els.winnerTeam.value;
+    if (!roundId || !team) return;
     if (state.winnerSettings.deadline && Date.now() > new Date(state.winnerSettings.deadline).getTime()) {
       setFeedback(els.winnerFeedback, 'Pronostics fermés.', 'danger');
       return;
     }
-    const roundId = els.winnerRound.value;
-    const team = els.winnerTeam.value;
-    if (!roundId || !team) return;
     await setDoc(doc(db, 'winnerPredictions', `${state.authUser.uid}_${roundId}`), {
       userId: state.authUser.uid,
       roundId,
@@ -196,7 +187,7 @@ function bindUI() {
   els.winnerAdminForm?.addEventListener('submit', async e => {
     e.preventDefault();
     if (!isAdmin()) return;
-    const teamsByRound = buildTeamsByRoundFromUI();
+    const teamsByRound = buildWinnerTeamsFromUI();
     await setDoc(doc(db, 'settings', 'winnerTournament'), {
       deadline: els.winnerDeadline?.value ? new Date(els.winnerDeadline.value).toISOString() : '',
       activeRound: els.winnerActiveRound?.value || 'r16',
@@ -408,31 +399,37 @@ function renderAdminResults() {
 }
 
 function renderWinnerTournament() {
-  const teamsByRound = state.winnerSettings.teamsByRound || { ...EMPTY_BRACKET };
-  els.winnerTournament.innerHTML = ROUNDS.map((round, idx) => {
-    const teams = teamsByRound[round.id] || [];
-    const nextTeams = idx < ROUNDS.length - 1 ? (teamsByRound[ROUNDS[idx + 1].id] || []) : [];
-    const cards = teams.map(team => `<div class="winner-team-row ${idx === ROUNDS.length - 1 ? 'alive' : (nextTeams.includes(team) ? 'alive' : 'out')}"><span>${team}</span><strong>${idx === ROUNDS.length - 1 ? 'Finaliste' : (nextTeams.includes(team) ? 'Qualifié' : 'Éliminé')}</strong></div>`).join('') || '<div class="muted">Aucune équipe saisie pour ce tour.</div>';
-    return `<article class="card winner-round-card"><div class="section-head"><div><p class="eyebrow">Tour</p><h3>${round.label}</h3></div><span class="pill">${round.points} pts</span></div><div class="winner-round-grid" data-round="${round.id}">${cards}</div></article>`;
+  const s = state.winnerSettings;
+  els.winnerTournament.innerHTML = W_ROUNDS.map((round, idx) => {
+    const teams = s.teamsByRound?.[round.id] || [];
+    const nextTeams = s.teamsByRound?.[W_ROUNDS[idx + 1]?.id] || [];
+    const rows = teams.map((team, i) => {
+      const alive = round.id === 'final' ? true : nextTeams.includes(team);
+      return `<div class="winner-team-row ${alive ? 'alive' : 'out'}">
+        <input class="winner-team-input" type="text" value="${team || ''}" placeholder="Équipe ${i + 1}" />
+        <strong>${round.id === 'final' ? 'Finaliste' : (alive ? 'Qualifié' : 'Éliminé')}</strong>
+      </div>`;
+    }).join('') || '<div class="muted">Aucune équipe pour ce tour.</div>';
+    return `<article class="card winner-round-card" data-round="${round.id}">
+      <div class="section-head"><div><p class="eyebrow">Tour</p><h3>${round.label}</h3></div></div>
+      <div class="winner-round-grid">${rows}</div>
+    </article>`;
   }).join('');
 }
 
 function renderWinnerUi() {
-  if (els.winnerStatus) els.winnerStatus.textContent = state.authUser ? 'Connecté' : 'Hors ligne';
-  if (els.winnerDeadline) els.winnerDeadline.value = state.winnerSettings.deadline ? toLocalInputValue(new Date(state.winnerSettings.deadline)) : '';
-  if (els.winnerActiveRound) els.winnerActiveRound.value = state.winnerSettings.activeRound || 'r16';
-  if (els.winnerFinalTeam) els.winnerFinalTeam.value = state.winnerSettings.actualWinner || '';
-
   if (els.winnerRound.options.length === 0) {
-    els.winnerRound.innerHTML = ROUNDS.map(r => `<option value="${r.id}">${r.label}</option>`).join('');
-    els.winnerActiveRound.innerHTML = ROUNDS.map(r => `<option value="${r.id}">${r.label}</option>`).join('');
+    els.winnerRound.innerHTML = W_ROUNDS.map(r => `<option value="${r.id}">${r.label}</option>`).join('');
+    els.winnerActiveRound.innerHTML = W_ROUNDS.map(r => `<option value="${r.id}">${r.label}</option>`).join('');
   }
-  if (!els.winnerRound.value) els.winnerRound.value = state.winnerSettings.activeRound || 'r16';
-
-  const roundTeams = getSelectableTeamsForRound(els.winnerRound.value, els.winnerOnlyAlive.checked);
+  els.winnerRound.value = state.winnerSettings.activeRound || 'r16';
+  els.winnerActiveRound.value = state.winnerSettings.activeRound || 'r16';
+  els.winnerDeadline.value = state.winnerSettings.deadline ? toLocalInputValue(new Date(state.winnerSettings.deadline)) : '';
+  els.winnerFinalTeam.value = state.winnerSettings.actualWinner || '';
+  const teams = els.winnerOnlyAlive.checked ? getWinnerTeams(els.winnerRound.value) : getAllWinnerTeams();
   const selected = els.winnerTeam.value;
-  els.winnerTeam.innerHTML = `<option value="">Choisir une équipe</option>` + roundTeams.map(team => `<option value="${team}">${team}</option>`).join('');
-  if (selected && roundTeams.includes(selected)) els.winnerTeam.value = selected;
+  els.winnerTeam.innerHTML = `<option value="">Choisir une équipe</option>` + teams.map(t => `<option value="${t}">${t}</option>`).join('');
+  if (selected && teams.includes(selected)) els.winnerTeam.value = selected;
 }
 
 function renderWinnerHistory() {
@@ -442,11 +439,11 @@ function renderWinnerHistory() {
   }
   const mine = state.winnerPredictions.filter(p => p.userId === state.authUser.uid);
   const byRound = new Map(mine.map(p => [p.roundId, p]));
-  const activeTeams = getTeamsByRound(state.winnerSettings.activeRound || 'r16');
-  els.winnerHistory.innerHTML = ROUNDS.map(round => {
+  const activeTeams = new Set(getWinnerTeams(state.winnerSettings.activeRound || 'r16'));
+  els.winnerHistory.innerHTML = W_ROUNDS.map(round => {
     const pred = byRound.get(round.id);
     const team = pred?.team || '—';
-    const status = pred ? (activeTeams.includes(pred.team) ? 'En course' : 'Éliminé') : 'En attente';
+    const status = pred ? (activeTeams.has(pred.team) ? 'En course' : 'Éliminé') : 'En attente';
     return `<tr><td>${round.label}</td><td>${team}</td><td>${status}</td></tr>`;
   }).join('');
 }
@@ -461,59 +458,43 @@ function renderWinnerRanking() {
 }
 
 function computeWinnerScore(rows) {
-  const teamsByRound = state.winnerSettings.teamsByRound || { ...EMPTY_BRACKET };
+  const s = state.winnerSettings;
   let points = 0;
   let choice = '—';
-  for (const round of ROUNDS) {
+  for (const round of W_ROUNDS) {
     const pred = rows.find(r => r.roundId === round.id);
     if (!pred) continue;
     choice = pred.team;
     if (round.id === 'final') {
-      points += round.points;
+      points += 10;
       continue;
     }
-    const nextTeams = getNextRoundTeams(round.id, teamsByRound);
-    if (nextTeams.includes(pred.team)) points += round.points;
+    const nextTeams = getWinnerTeams(W_ROUNDS[W_ROUNDS.findIndex(r => r.id === round.id) + 1]?.id || 'final', s);
+    if (nextTeams.includes(pred.team)) points += 10;
   }
   return { points, choice };
 }
 
-function getSelectableTeamsForRound(roundId, onlyAlive) {
-  if (!onlyAlive) return getAllTeamsFromSettings();
-  return getTeamsByRound(roundId);
+function getWinnerTeams(roundId, settings = state.winnerSettings) {
+  return settings.teamsByRound?.[roundId] || [];
 }
 
-function getTeamsByRound(roundId) {
-  const teamsByRound = state.winnerSettings.teamsByRound || { ...EMPTY_BRACKET };
-  if (roundId === 'r16') return teamsByRound.r16 || [];
-  if (roundId === 'r8') return teamsByRound.r8 || [];
-  if (roundId === 'qf') return teamsByRound.qf || [];
-  if (roundId === 'sf') return teamsByRound.sf || [];
-  if (roundId === 'final') return teamsByRound.final || [];
-  return [];
+function getAllWinnerTeams(settings = state.winnerSettings) {
+  return [...new Set(Object.values(settings.teamsByRound || W_EMPTY).flat())].filter(Boolean);
 }
 
-function getNextRoundTeams(roundId, teamsByRound) {
-  if (roundId === 'r16') return teamsByRound.r8 || [];
-  if (roundId === 'r8') return teamsByRound.qf || [];
-  if (roundId === 'qf') return teamsByRound.sf || [];
-  if (roundId === 'sf') return teamsByRound.final || [];
-  return teamsByRound.final || [];
-}
-
-function getAllTeamsFromSettings() {
-  const teamsByRound = state.winnerSettings.teamsByRound || { ...EMPTY_BRACKET };
-  return [...new Set(Object.values(teamsByRound).flat())].filter(Boolean);
-}
-
-function buildTeamsByRoundFromUI() {
-  const data = { ...EMPTY_BRACKET };
+function buildWinnerTeamsFromUI() {
   const root = document.getElementById('view-winner');
-  [...root.querySelectorAll('.winner-round-card')].forEach((card, idx) => {
-    const roundId = ROUNDS[idx].id;
-    data[roundId] = [...card.querySelectorAll('.winner-team-row span')].map(el => el.textContent.trim()).filter(Boolean);
+  const data = { ...W_EMPTY };
+  W_ROUNDS.forEach((round, idx) => {
+    const block = root.querySelector(`.winner-round-card[data-round="${round.id}"]`);
+    const inputs = block ? [...block.querySelectorAll('input.winner-team-input')] : [];
+    data[round.id] = inputs.map(i => i.value.trim()).filter(Boolean);
+    if (round.id !== 'final') {
+      const next = W_ROUNDS[idx + 1]?.id;
+      if (next && !data[next].length && data[round.id].length) data[next] = data[round.id].slice(0, Math.ceil(data[round.id].length / 2));
+    }
   });
-  if (!data.final.length) data.final = data.sf.slice();
   return data;
 }
 
@@ -532,85 +513,16 @@ function sanitizeWinnerSettings(raw) {
   };
 }
 
-function getPrediction(userId, matchId) {
-  return state.predictions.find(p => p.userId === userId && p.matchId === matchId) || null;
-}
-
-function getRanking() {
-  return state.users
-    .filter(u => u.role === 'participant' || u.role === 'admin')
-    .map(u => {
-      const points = state.matches.filter(isFinished).reduce((sum, match) => {
-        const pred = getPrediction(u.uid, match.id);
-        return sum + (pred ? scorePrediction(pred, match) : 0);
-      }, 0);
-      return { ...u, points, exact: 0, outcome: 0 };
-    })
-    .sort((a, b) => b.points - a.points || (a.displayName || '').localeCompare(b.displayName || ''));
-}
-
-function getStatsForUser(uid) {
-  const userPredictions = state.predictions.filter(p => p.userId === uid);
-  let points = 0, exact = 0, outcome = 0;
-  state.matches.filter(isFinished).forEach(match => {
-    const pred = userPredictions.find(p => p.matchId === match.id);
-    if (!pred) return;
-    const score = scorePrediction(pred, match);
-    points += score;
-    if (score === 5) exact++;
-    if (score === 3) outcome++;
-  });
-  return { points, exact, outcome, predictions: userPredictions.length };
-}
-
-function scorePrediction(pred, match) {
-  if (pred.home === match.homeScore && pred.away === match.awayScore) return 5;
-  return getOutcome(pred.home, pred.away) === getOutcome(match.homeScore, match.awayScore) ? 3 : 0;
-}
-
-function getOutcome(home, away) {
-  if (home > away) return 'home';
-  if (home < away) return 'away';
-  return 'draw';
-}
-
-function isFinished(match) {
-  return Number.isInteger(match.homeScore) && Number.isInteger(match.awayScore);
-}
-
-function isLocked(match) {
-  return new Date(match.kickoff).getTime() <= Date.now() || isFinished(match);
-}
-
-function matchStatus(match) {
-  if (isFinished(match)) return `Terminé ${match.homeScore}-${match.awayScore}`;
-  if (isLocked(match)) return 'Verrouillé';
-  return 'Ouvert';
-}
-
-function isAdmin() {
-  return state.profile?.role === 'admin';
-}
-
-function formatDate(iso) {
-  return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
-}
-
-function setFeedback(el, message, type) {
-  if (!el) return;
-  el.textContent = message;
-  el.className = `helper ${type}`;
-}
-
-function mapAuthError(error) {
-  const code = error?.code || '';
-  if (code.includes('invalid-credential')) return 'Email ou mot de passe incorrect.';
-  if (code.includes('email-already-in-use')) return 'Cet email est déjà utilisé.';
-  if (code.includes('weak-password')) return 'Mot de passe trop faible. 6 caractères minimum.';
-  return error.message || 'Une erreur est survenue.';
-}
-
-function toLocalInputValue(date) {
-  const p = n => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}T${p(date.getHours())}:${p(date.getMinutes())}`;
-}
+function getPrediction(userId, matchId) { return state.predictions.find(p => p.userId === userId && p.matchId === matchId) || null; }
+function getRanking() { return state.users.filter(u => u.role === 'participant' || u.role === 'admin').map(u => { const points = state.matches.filter(isFinished).reduce((sum, match) => { const pred = getPrediction(u.uid, match.id); return sum + (pred ? scorePrediction(pred, match) : 0); }, 0); return { ...u, points, exact: 0, outcome: 0 }; }).sort((a, b) => b.points - a.points || (a.displayName || '').localeCompare(b.displayName || '')); }
+function getStatsForUser(uid) { const userPredictions = state.predictions.filter(p => p.userId === uid); let points = 0, exact = 0, outcome = 0; state.matches.filter(isFinished).forEach(match => { const pred = userPredictions.find(p => p.matchId === match.id); if (!pred) return; const score = scorePrediction(pred, match); points += score; if (score === 5) exact++; if (score === 3) outcome++; }); return { points, exact, outcome, predictions: userPredictions.length }; }
+function scorePrediction(pred, match) { if (pred.home === match.homeScore && pred.away === match.awayScore) return 5; return getOutcome(pred.home, pred.away) === getOutcome(match.homeScore, match.awayScore) ? 3 : 0; }
+function getOutcome(home, away) { if (home > away) return 'home'; if (home < away) return 'away'; return 'draw'; }
+function isFinished(match) { return Number.isInteger(match.homeScore) && Number.isInteger(match.awayScore); }
+function isLocked(match) { return new Date(match.kickoff).getTime() <= Date.now() || isFinished(match); }
+function matchStatus(match) { if (isFinished(match)) return `Terminé ${match.homeScore}-${match.awayScore}`; if (isLocked(match)) return 'Verrouillé'; return 'Ouvert'; }
+function isAdmin() { return state.profile?.role === 'admin'; }
+function formatDate(iso) { return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }); }
+function setFeedback(el, message, type) { if (!el) return; el.textContent = message; el.className = `helper ${type}`; }
+function mapAuthError(error) { const code = error?.code || ''; if (code.includes('invalid-credential')) return 'Email ou mot de passe incorrect.'; if (code.includes('email-already-in-use')) return 'Cet email est déjà utilisé.'; if (code.includes('weak-password')) return 'Mot de passe trop faible. 6 caractères minimum.'; return error.message || 'Une erreur est survenue.'; }
+function toLocalInputValue(date) { const p = n => String(n).padStart(2, '0'); return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}T${p(date.getHours())}:${p(date.getMinutes())}`; }
