@@ -1,202 +1,200 @@
-<!doctype html>
-<html lang="fr">
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>DTQ Coupe du Monde 2026</title>
-  <link rel="stylesheet" href="style.css" />
-  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
-  <style>
-    /* optionnel: juste pour éviter un écran vide si style.css est incomplet */
-    [hidden] { display: none !important; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prono FIFA World Cup 2026</title>
+    <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.plot.ly/plotly-2.33.0.min.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <h1>DTQ Coupe du Monde 2026</h1>
-      <p class="muted">Pronostics, classement et bracket Vainqueur</p>
-    </div>
-    <div class="topbar-actions">
-      <button id="theme-toggle" class="btn">🌙</button>
-      <button id="sign-out-btn" class="btn btn-secondary" hidden>Déconnexion</button>
-    </div>
-  </header>
-
-  <main>
-    <section id="auth-panel" class="card">
-      <h2>Connexion</h2>
-      <form id="auth-form" class="stack">
-        <label>Email <input id="auth-email" type="email" required /></label>
-        <label>Mot de passe <input id="auth-password" type="password" required /></label>
-        <div class="row gap">
-          <button id="register-btn" type="button" class="btn btn-secondary">Créer un compte</button>
-          <button type="submit" class="btn btn-primary">Se connecter</button>
-        </div>
-      </form>
-      <p id="auth-feedback" class="helper"></p>
-    </section>
-
-    <section id="app" hidden>
-      <section class="card user-card">
-        <div>
-          <strong id="current-user-name">—</strong>
-          <div id="current-user-role" class="muted">—</div>
-        </div>
-      </section>
-
-      <nav class="nav card">
-        <button class="active" data-view="dashboard">Dashboard</button>
-        <button data-view="matches">Matches</button>
-        <button data-view="ranking">Classement</button>
-        <button data-view="winner">Vainqueur</button>
-      </nav>
-
-      <section id="view-dashboard" class="view active">
-        <div id="kpis" class="grid-4"></div>
-        <article class="card">
-          <h2>Mes points</h2>
-          <div id="my-summary" class="summary-grid"></div>
-        </article>
-        <article class="card">
-          <h2>Prochains matches</h2>
-          <div id="dashboard-matches" class="cards-grid"></div>
-        </article>
-      </section>
-
-      <section id="view-matches" class="view">
-        <div class="filters row gap">
-          <button class="btn btn-primary filter-btn" data-filter="all">Tous</button>
-          <button class="btn btn-secondary filter-btn" data-filter="open">Ouverts</button>
-          <button class="btn btn-secondary filter-btn" data-filter="finished">Terminés</button>
-        </div>
-
-        <article class="card">
-          <h2>Mes pronostics</h2>
-          <div id="matches-list" class="cards-grid"></div>
-        </article>
-
-        <article class="card">
-          <h2>Profil</h2>
-          <form id="profile-form" class="stack">
-            <label>Nom affiché <input id="display-name" type="text" /></label>
-            <label>Rôle
-              <select id="role-select">
-                <option value="participant">Participant</option>
-                <option value="admin">Admin</option>
-              </select>
-            </label>
-            <button type="submit" class="btn btn-primary">Enregistrer le profil</button>
-          </form>
-          <p id="profile-feedback" class="helper"></p>
-        </article>
-      </section>
-
-      <section id="view-ranking" class="view">
-        <article class="card">
-          <h2>Classement</h2>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Rang</th>
-                <th>Participant</th>
-                <th>Points</th>
-                <th>Scores exacts</th>
-                <th>Bons résultats</th>
-              </tr>
-            </thead>
-            <tbody id="ranking-body"></tbody>
-          </table>
-        </article>
-
-        <article class="card">
-          <h2>Évolution des points</h2>
-          <select id="ranking-participants" multiple></select>
-          <div id="ranking-evolution-chart" class="chart-box"></div>
-        </article>
-
-        <article class="card" id="admin-results-card">
-          <h2>Résultats officiels</h2>
-          <div id="admin-results" class="stack"></div>
-        </article>
-      </section>
-
-      <section id="view-winner" class="view">
-        <article class="card">
-          <h2>Pronostic Vainqueur</h2>
-          <p id="winner-status" class="muted"></p>
-
-          <form id="winner-form" class="stack">
-            <label>Tour
-              <select id="winner-round"></select>
-            </label>
-
-            <label>Équipes encore en course
-              <select id="winner-team"></select>
-            </label>
-
-            <label>
-              <input id="winner-only-alive" type="checkbox" checked />
-              N’afficher que les équipes encore en course
-            </label>
-
-            <div class="row gap">
-              <button type="submit" class="btn btn-primary">Enregistrer</button>
-              <button id="winner-clear-btn" type="button" class="btn btn-secondary">Effacer</button>
+    <div class="app-shell">
+        <header class="topbar">
+            <div class="brand--header">
+                <div class="brand-copy">
+                    <h1>Prono FIFA World Cup 2026</h1>
+                    <p>Pronostics · Résultats · Classement</p>
+                </div>
             </div>
-          </form>
+            <div class="topbar-actions">
+                <button class="btn" id="theme-toggle" aria-label="Basculer le thème">🌙</button>
+                <button class="btn" id="sign-out-btn" hidden>Se déconnecter</button>
+            </div>
+        </header>
 
-          <p id="winner-feedback" class="helper"></p>
-        </article>
+        <main class="layout">
+            <section class="panel auth-panel" id="auth-panel">
+                <article class="card auth-card">
+                    <h2>Connexion</h2>
+                    <p class="muted">Connectez vos collaborateurs avec un compte simple email / mot de passe.</p>
+                    <form id="auth-form" class="form-grid">
+                        <label>
+                            <span>Email</span>
+                            <input id="auth-email" class="input" type="email" placeholder="prenom.nom@entreprise.fr" required>
+                        </label>
+                        <label>
+                            <span>Mot de passe</span>
+                            <input id="auth-password" class="input" type="password" placeholder="******" minlength="6" required>
+                        </label>
+                        <div class="row wrap">
+                            <button type="submit" class="btn btn-primary">Se connecter</button>
+                            <button type="button" class="btn" id="register-btn">Créer un compte</button>
+                        </div>
+                    </form>
+                    <p class="helper" id="auth-feedback"></p>
+                </article>
+            </section>
 
-        <article class="card">
-          <h2>Mon historique</h2>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Tour</th>
-                <th>Choix</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="winner-history"></tbody>
-          </table>
-        </article>
+            <section class="app hidden" id="app">
+                <aside class="sidebar">
+                    <div class="brand-box">
+                        <div class="badge">Firebase live</div>
+                        <p class="muted">Les données sont partagées en temps réel entre utilisateurs via Cloud Firestore.</p>
+                    </div>
 
-        <article class="card">
-          <h2>Classement Vainqueur</h2>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Participant</th>
-                <th>Points</th>
-                <th>Choix</th>
-              </tr>
-            </thead>
-            <tbody id="winner-ranking"></tbody>
-          </table>
-        </article>
+                    <nav class="nav">
+                        <button class="active" data-view="dashboard">Tableau de bord</button>
+                        <button data-view="matches">Matches</button>
+                        <button data-view="ranking">Classement</button>
+                        <button data-view="admin">Admin</button>
+                    </nav>
 
-        <article class="card" id="admin-settings-card">
-          <h2>Paramètres Vainqueur</h2>
-          <form id="winner-admin-form" class="stack">
-            <label>Date limite <input id="winner-deadline" type="datetime-local" /></label>
-            <label>Tour actif
-              <select id="winner-active-round"></select>
-            </label>
-            <label>Vainqueur final <input id="winner-final-team" type="text" /></label>
-            <button type="submit" class="btn btn-primary">Sauvegarder les paramètres</button>
-          </form>
-        </article>
+                    <div class="sidebar-note">
+                        <strong>Utilisateur</strong>
+                        <div id="current-user-name" class="muted"></div>
+                        <strong>Rôle</strong>
+                        <div id="current-user-role" class="muted"></div>
+                    </div>
+                </aside>
 
-        <article class="card">
-          <h2>Bracket admin</h2>
-          <div id="winner-tournament"></div>
-        </article>
-      </section>
-    </section>
-  </main>
+                <section class="content">
+                    <div class="view active" id="view-dashboard">
+                        <div class="grid kpis" id="kpis"></div>
 
-  <script type="module" src="app.js"></script>
+                        <div class="grid two-cols section-gap">
+                            <article class="card">
+                                <h2>Matches à pronostiquer</h2>
+                                <p class="muted">Les modifications sont autorisées jusqu’au coup d’envoi.</p>
+                                <div id="dashboard-matches" class="list"></div>
+                            </article>
+
+                            <article class="card">
+                                <h2>Mon suivi</h2>
+                                <div id="my-summary" class="list"></div>
+                            </article>
+                        </div>
+                    </div>
+
+                    <div class="view" id="view-matches">
+                        <article class="card">
+                            <div class="section-head">
+                                <div>
+                                    <h2>Calendrier</h2>
+                                    <p class="muted">Pronostics par match et visibilité des résultats officiels.</p>
+                                </div>
+                                <div class="row wrap">
+                                    <button class="btn btn-primary filter-btn" data-filter="all">Tous</button>
+                                    <button class="btn filter-btn" data-filter="open">Ouverts</button>
+                                    <button class="btn filter-btn" data-filter="finished">Terminés</button>
+                                </div>
+                            </div>
+                            <div id="matches-list" class="list"></div>
+                        </article>
+                    </div>
+
+                    <div class="view" id="view-ranking">
+                        <article class="card">
+                            <h2>Classement en direct</h2>
+                            <div class="table-wrap">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Rang</th>
+                                            <th>Participant</th>
+                                            <th>Points</th>
+                                            <th>Scores exacts</th>
+                                            <th>Bons résultats</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ranking-body"></tbody>
+                                </table>
+                            </div>
+
+                            <div class="ranking-evolution-section">
+                                <div class="section-head">
+                                    <div>
+                                        <h2>Évolution après chaque match</h2>
+                                        <p class="muted">Points cumulés des participants sélectionnés après chaque match terminé.</p>
+                                    </div>
+                                    <div class="row wrap">
+                                        <label class="helper" for="ranking-participants">Afficher :</label>
+                                        <select id="ranking-participants" class="input" multiple size="6" style="max-width: 320px;">
+                                            <option value="all" selected>Tous les participants</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="chart-wrap">
+                                    <div id="ranking-evolution-chart"></div>
+                                </div>
+                            </div>
+                        </article>
+                    </div>
+
+                    <div class="view" id="view-admin">
+                        <div class="grid two-cols section-gap">
+                            <article class="card">
+                                <h2>Créer un participant</h2>
+                                <p class="muted">Créer son profil Firestore après inscription Firebase Auth.</p>
+                                <form id="profile-form" class="form-grid">
+                                    <label>
+                                        <span>Nom affiché</span>
+                                        <input id="display-name" class="input" type="text" maxlength="40" placeholder="Ex. Marion Dupont" required>
+                                    </label>
+                                    <label>
+                                        <span>Rôle</span>
+                                        <select id="role-select" class="input">
+                                            <option value="participant">Participant</option>
+                                            <option value="admin">Admin</option>
+                                        </select>
+                                    </label>
+                                    <button type="submit" class="btn btn-primary">Enregistrer mon profil</button>
+                                </form>
+                                <p class="helper" id="profile-feedback"></p>
+                            </article>
+
+                            <article class="card admin-only" id="admin-settings-card">
+                                <h2>Actions administrateur</h2>
+                                <p class="muted">Création de matches et publication des résultats officiels.</p>
+                                <form id="match-form" class="form-grid">
+                                    <label>
+                                        <span>Équipe domicile</span>
+                                        <input id="home-team" class="input" type="text" required>
+                                    </label>
+                                    <label>
+                                        <span>Équipe extérieur</span>
+                                        <input id="away-team" class="input" type="text" required>
+                                    </label>
+                                    <label>
+                                        <span>Coup d’envoi</span>
+                                        <input id="kickoff" class="input" type="datetime-local" required>
+                                    </label>
+                                    <button type="submit" class="btn btn-primary">Ajouter le match</button>
+                                </form>
+                                <p class="helper" id="match-feedback"></p>
+                            </article>
+                        </div>
+
+                        <article class="card admin-only" id="admin-results-card">
+                            <h2>Résultats officiels</h2>
+                            <div id="admin-results" class="list"></div>
+                        </article>
+                    </div>
+                </section>
+            </section>
+        </main>
+    </div>
+
+    <script type="module" src="app.js"></script>
 </body>
 </html>
