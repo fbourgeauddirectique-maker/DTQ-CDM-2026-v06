@@ -82,10 +82,6 @@ const els = {
   adminSettingsCard: document.getElementById('admin-settings-card'),
   adminResultsCard: document.getElementById('admin-results-card'),
   winnerPanel: document.getElementById('winner-panel'),
-  adminWinnerCard: document.getElementById('admin-winner-card'),
-  winnerAdminForm: document.getElementById('winner-admin-form'),
-  saveRemainingTeamsBtn: document.getElementById('save-remaining-teams-btn'),
-  declareWinnerBtn: document.getElementById('declare-winner-btn'),
   winnerAdminFeedback: document.getElementById('winner-admin-feedback'),
   themeToggle: document.getElementById('theme-toggle')
 };
@@ -100,7 +96,8 @@ function bindUI() {
       document.querySelectorAll('.nav button').forEach((b) => b.classList.remove('active'));
       document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
       btn.classList.add('active');
-      document.getElementById(`view-${btn.dataset.view}`).classList.add('active');
+      const target = document.getElementById(`view-${btn.dataset.view}`);
+      if (target) target.classList.add('active');
       if (btn.dataset.view === 'ranking') renderRankingEvolution();
       if (btn.dataset.view === 'winner') renderWinnerView();
     });
@@ -115,11 +112,9 @@ function bindUI() {
     });
   });
 
-  els.rankingParticipants?.addEventListener('change', () => {
-    renderRankingEvolution();
-  });
+  els.rankingParticipants?.addEventListener('change', renderRankingEvolution);
 
-  els.authForm.addEventListener('submit', async (e) => {
+  els.authForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
       await signInWithEmailAndPassword(auth, els.email.value.trim(), els.password.value.trim());
@@ -129,7 +124,7 @@ function bindUI() {
     }
   });
 
-  els.registerBtn.addEventListener('click', async () => {
+  els.registerBtn?.addEventListener('click', async () => {
     try {
       await createUserWithEmailAndPassword(auth, els.email.value.trim(), els.password.value.trim());
       setFeedback(els.authFeedback, 'Compte créé. Enregistrez maintenant votre profil.', 'success');
@@ -138,9 +133,9 @@ function bindUI() {
     }
   });
 
-  els.signOutBtn.addEventListener('click', () => signOut(auth));
+  els.signOutBtn?.addEventListener('click', () => signOut(auth));
 
-  els.profileForm.addEventListener('submit', async (e) => {
+  els.profileForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!state.authUser) return;
     try {
@@ -157,7 +152,7 @@ function bindUI() {
     }
   });
 
-  els.matchForm.addEventListener('submit', async (e) => {
+  els.matchForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!isAdmin()) return;
     try {
@@ -176,10 +171,7 @@ function bindUI() {
     }
   });
 
-  els.saveRemainingTeamsBtn?.addEventListener('click', saveRemainingTeams);
-  els.declareWinnerBtn?.addEventListener('click', declareWinner);
-
-  els.themeToggle.addEventListener('click', () => {
+  els.themeToggle?.addEventListener('click', () => {
     const root = document.documentElement;
     const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     root.setAttribute('data-theme', next);
@@ -190,7 +182,7 @@ function bindUI() {
 function applyTheme() {
   const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  els.themeToggle.textContent = dark ? '☀️' : '🌙';
+  if (els.themeToggle) els.themeToggle.textContent = dark ? '☀️' : '🌙';
 }
 
 function watchAuth() {
@@ -200,15 +192,15 @@ function watchAuth() {
     state.profile = null;
 
     if (!user) {
-      els.authPanel.hidden = false;
-      els.app.hidden = true;
-      els.signOutBtn.hidden = true;
+      if (els.authPanel) els.authPanel.hidden = false;
+      if (els.app) els.app.hidden = true;
+      if (els.signOutBtn) els.signOutBtn.hidden = true;
       return;
     }
 
-    els.authPanel.hidden = true;
-    els.app.hidden = false;
-    els.signOutBtn.hidden = false;
+    if (els.authPanel) els.authPanel.hidden = true;
+    if (els.app) els.app.hidden = false;
+    if (els.signOutBtn) els.signOutBtn.hidden = false;
 
     subscribeData(user.uid);
   });
@@ -219,25 +211,56 @@ function subscribeData(uid) {
     state.users = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
     state.profile = state.users.find((u) => u.uid === uid) || null;
     render();
+  }, (error) => {
+    console.error('users snapshot error', error);
+    state.users = [];
+    state.profile = null;
+    render();
   });
 
   const unsubMatches = onSnapshot(query(collection(db, 'matches'), orderBy('kickoff')), (snapshot) => {
     state.matches = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+    render();
+  }, (error) => {
+    console.error('matches snapshot error', error);
+    state.matches = [];
     render();
   });
 
   const unsubPredictions = onSnapshot(query(collection(db, 'predictions')), (snapshot) => {
     state.predictions = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
     render();
+  }, (error) => {
+    console.error('predictions snapshot error', error);
+    state.predictions = [];
+    render();
   });
 
   const unsubWinnerInfo = onSnapshot(doc(db, 'winners', 'current'), (snap) => {
-    state.winnerInfo = snap.exists() ? { id: snap.id, ...snap.data() } : null;
+    state.winnerInfo = snap.exists() ? { id: snap.id, ...snap.data() } : {
+      id: 'current',
+      remainingTeams: [],
+      winningTeam: null,
+      deadlineTimestamp: null
+    };
+    renderWinnerView();
+  }, (error) => {
+    console.warn('winner info unavailable', error);
+    state.winnerInfo = {
+      id: 'current',
+      remainingTeams: [],
+      winningTeam: null,
+      deadlineTimestamp: null
+    };
     renderWinnerView();
   });
 
   const unsubWinnerChoices = onSnapshot(query(collection(db, 'winnerChoices')), (snapshot) => {
     state.winnerChoices = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+    renderWinnerView();
+  }, (error) => {
+    console.warn('winner choices unavailable', error);
+    state.winnerChoices = [];
     renderWinnerView();
   });
 
@@ -252,11 +275,10 @@ function cleanupListeners() {
 function render() {
   if (!state.authUser) return;
 
-  els.currentUserName.textContent = state.profile?.displayName || state.authUser?.email || 'Profil à compléter';
-  els.currentUserRole.textContent = state.profile?.role || 'Aucun rôle';
-  els.adminSettingsCard.hidden = !isAdmin();
-  els.adminResultsCard.hidden = !isAdmin();
-  els.adminWinnerCard.hidden = !isAdmin();
+  if (els.currentUserName) els.currentUserName.textContent = state.profile?.displayName || state.authUser?.email || 'Profil à compléter';
+  if (els.currentUserRole) els.currentUserRole.textContent = state.profile?.role || 'Aucun rôle';
+  if (els.adminSettingsCard) els.adminSettingsCard.hidden = !isAdmin();
+  if (els.adminResultsCard) els.adminResultsCard.hidden = !isAdmin();
 
   renderKpis();
   renderDashboard();
@@ -269,6 +291,7 @@ function render() {
 }
 
 function renderKpis() {
+  if (!els.kpis) return;
   const participants = state.users.filter((u) => u.role === 'participant').length;
   const finished = state.matches.filter(isFinished).length;
   const leader = getRanking()[0];
@@ -289,6 +312,7 @@ function renderKpis() {
 }
 
 function renderDashboard() {
+  if (!els.dashboardMatches || !els.mySummary) return;
   const openMatches = state.matches.filter((m) => !isLocked(m)).slice(0, 5);
   els.dashboardMatches.innerHTML = '';
   openMatches.forEach((match) => els.dashboardMatches.appendChild(buildMatchCard(match)));
@@ -311,6 +335,7 @@ function renderDashboard() {
 }
 
 function renderMatches() {
+  if (!els.matchesList) return;
   const matches = state.matches.filter((match) => {
     if (state.filter === 'open') return !isFinished(match) && !isLocked(match);
     if (state.filter === 'finished') return isFinished(match);
@@ -329,7 +354,7 @@ function buildMatchCard(match) {
   wrapper.innerHTML = `
     <div class="match-top">
       <div>
-        <strong>${match.home} vs ${match.away}</strong>
+        <strong>${escapeHtml(match.home)} vs ${escapeHtml(match.away)}</strong>
         <div class="muted">${formatDate(match.kickoff)}</div>
       </div>
       <div>
@@ -338,12 +363,12 @@ function buildMatchCard(match) {
     </div>
     <div class="match-grid">
       <div class="team-col">
-        <span>${match.home}</span>
+        <span>${escapeHtml(match.home)}</span>
         <input class="score-input home-score" type="number" min="0" max="20" value="${pred?.home ?? ''}" ${isLocked(match) ? 'disabled' : ''}>
       </div>
       <div></div>
       <div class="team-col">
-        <span>${match.away}</span>
+        <span>${escapeHtml(match.away)}</span>
         <input class="score-input away-score" type="number" min="0" max="20" value="${pred?.away ?? ''}" ${isLocked(match) ? 'disabled' : ''}>
       </div>
       <button class="btn btn-primary save-btn" ${isLocked(match) ? 'disabled' : ''}>Enregistrer</button>
@@ -370,11 +395,12 @@ function buildMatchCard(match) {
 }
 
 function renderRanking() {
+  if (!els.rankingBody) return;
   const ranking = getRanking();
   els.rankingBody.innerHTML = ranking.map((user, index) => `
     <tr>
       <td>${index + 1}</td>
-      <td>${user.displayName || user.email}</td>
+      <td>${escapeHtml(user.displayName || user.email)}</td>
       <td>${user.points}</td>
       <td>${user.exact}</td>
       <td>${user.outcome}</td>
@@ -390,7 +416,7 @@ function populateRankingParticipantsSelect() {
 
   els.rankingParticipants.innerHTML = `
     <option value="all">Tous les participants</option>
-    ${participants.map((u) => `<option value="${u.uid}">${u.displayName || u.email}</option>`).join('')}
+    ${participants.map((u) => `<option value="${u.uid}">${escapeHtml(u.displayName || u.email)}</option>`).join('')}
   `;
 
   if (selected.length) {
@@ -403,18 +429,14 @@ function populateRankingParticipantsSelect() {
 }
 
 function buildEvolutionByMatch() {
-  const finishedMatches = state.matches
-    .filter(isFinished)
-    .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
-
+  const finishedMatches = state.matches.filter(isFinished).sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
   const participants = state.users.filter((u) => u.role === 'participant' || u.role === 'admin');
-  const selectedIds = els.rankingParticipants
-    ? [...els.rankingParticipants.selectedOptions].map((o) => o.value)
-    : ['all'];
+  const selectedIds = els.rankingParticipants ? [...els.rankingParticipants.selectedOptions].map((o) => o.value) : ['all'];
 
-  const visibleParticipants = selectedIds.includes('all') || !selectedIds.length
-    ? participants
-    : participants.filter((u) => selectedIds.includes(u.uid));
+  const visibleParticipants =
+    selectedIds.includes('all') || !selectedIds.length
+      ? participants
+      : participants.filter((u) => selectedIds.includes(u.uid));
 
   const cumulativeByUser = new Map(visibleParticipants.map((u) => [u.uid, 0]));
   const matchLabels = finishedMatches.map((match, index) => `M${index + 1}`);
@@ -433,7 +455,6 @@ function buildEvolutionByMatch() {
         cumulativeByUser.set(user.uid, (cumulativeByUser.get(user.uid) || 0) + scorePrediction(pred, match));
       }
     });
-
     series.forEach((item) => item.values.push(cumulativeByUser.get(item.uid) || 0));
   });
 
@@ -442,7 +463,6 @@ function buildEvolutionByMatch() {
 
 function renderRankingEvolution() {
   if (!els.rankingEvolutionChart || !window.Plotly) return;
-
   const { matchLabels, series } = buildEvolutionByMatch();
 
   if (!matchLabels.length || !series.length) {
@@ -478,6 +498,7 @@ function renderRankingEvolution() {
 }
 
 function renderAdminResults() {
+  if (!els.adminResults) return;
   els.adminResults.innerHTML = '';
   if (!isAdmin()) return;
 
@@ -487,7 +508,7 @@ function renderAdminResults() {
     card.innerHTML = `
       <div class="row wrap section-gap">
         <div>
-          <strong>${match.home} vs ${match.away}</strong>
+          <strong>${escapeHtml(match.home)} vs ${escapeHtml(match.away)}</strong>
           <div class="muted">${formatDate(match.kickoff)}</div>
         </div>
         <div>
@@ -521,13 +542,14 @@ function renderAdminResults() {
 function renderWinnerView() {
   if (!els.winnerPanel || !state.authUser) return;
 
-  const deadlineText = state.winnerInfo?.deadlineTimestamp?.toDate
-    ? formatDate(state.winnerInfo.deadlineTimestamp.toDate())
+  const info = state.winnerInfo || { remainingTeams: [], winningTeam: null, deadlineTimestamp: null };
+  const deadlineText = info.deadlineTimestamp?.toDate
+    ? formatDate(info.deadlineTimestamp.toDate())
     : 'Mercredi 1 juillet 19:00';
 
-  const remainingTeams = state.winnerInfo?.remainingTeams || [];
+  const remainingTeams = Array.isArray(info.remainingTeams) ? info.remainingTeams : [];
   const myChoice = state.winnerChoices.find((c) => c.userId === state.authUser.uid);
-  const locked = isDeadlinePassed() || !!state.winnerInfo?.winningTeam;
+  const locked = isDeadlinePassed() || !!info.winningTeam;
 
   const participantBlock = `
     <article class="card">
@@ -538,13 +560,11 @@ function renderWinnerView() {
           <span>Équipe choisie</span>
           <select id="winner-team-select" class="input" ${locked ? 'disabled' : ''}>
             <option value="">Choisir un pays</option>
-            ${remainingTeams
-              .map((team) => `
-                <option value="${escapeHtml(team)}" ${myChoice?.teamCode === team ? 'selected' : ''}>
-                  ${escapeHtml(team)}
-                </option>
-              `)
-              .join('')}
+            ${remainingTeams.map((team) => `
+              <option value="${escapeHtml(team)}" ${myChoice?.teamCode === team ? 'selected' : ''}>
+                ${escapeHtml(team)}
+              </option>
+            `).join('')}
           </select>
         </label>
         <button type="button" class="btn btn-primary" id="save-winner-choice-btn" ${locked ? 'disabled' : ''}>
@@ -556,33 +576,36 @@ function renderWinnerView() {
     </article>
   `;
 
-  const adminBlock = isAdmin()
-    ? `
-      <article class="card">
-        <h3>Admin — pays encore en course</h3>
-        <p class="muted">Cochez les pays encore en course puis enregistrez.</p>
-        <div class="form-grid" id="winner-admin-teams-list">
-          ${WORLD_CUP_TEAMS.map((team) => `
-            <label style="display:flex;align-items:center;gap:.5rem;">
-              <input type="checkbox" class="team-checkbox" value="${escapeHtml(team)}" ${remainingTeams.includes(team) ? 'checked' : ''}>
-              <span>${escapeHtml(team)}</span>
-            </label>
-          `).join('')}
-        </div>
-      </article>
-    `
-    : '';
+  const adminBlock = isAdmin() ? `
+    <article class="card">
+      <h3>Admin — pays encore en course</h3>
+      <p class="muted">Cochez les pays encore en course puis cliquez sur enregistrer.</p>
+      <div class="form-grid" id="winner-admin-teams-list">
+        ${WORLD_CUP_TEAMS.map((team) => `
+          <label style="display:flex;align-items:center;gap:.5rem;">
+            <input type="checkbox" class="team-checkbox" value="${escapeHtml(team)}" ${remainingTeams.includes(team) ? 'checked' : ''}>
+            <span>${escapeHtml(team)}</span>
+          </label>
+        `).join('')}
+      </div>
+      <div class="row wrap" style="margin-top: 1rem;">
+        <button type="button" class="btn btn-primary" id="save-remaining-teams-btn">Enregistrer la liste</button>
+        <button type="button" class="btn" id="declare-winner-btn">Déclarer le vainqueur</button>
+      </div>
+      <p class="helper" id="winner-admin-feedback"></p>
+    </article>
+  ` : '';
 
   els.winnerPanel.innerHTML = participantBlock + adminBlock;
 
-  const saveBtn = document.getElementById('save-winner-choice-btn');
-  const select = document.getElementById('winner-team-select');
-  const feedback = document.getElementById('winner-choice-feedback');
+  const saveChoiceBtn = document.getElementById('save-winner-choice-btn');
+  const teamSelect = document.getElementById('winner-team-select');
+  const choiceFeedback = document.getElementById('winner-choice-feedback');
 
-  saveBtn?.addEventListener('click', async () => {
-    const teamCode = select.value;
+  saveChoiceBtn?.addEventListener('click', async () => {
+    const teamCode = teamSelect?.value;
     if (!teamCode) {
-      setFeedback(feedback, 'Veuillez choisir un pays.', 'danger');
+      setFeedback(choiceFeedback, 'Veuillez choisir un pays.', 'danger');
       return;
     }
 
@@ -592,15 +615,19 @@ function renderWinnerView() {
         teamCode,
         chosenAt: serverTimestamp()
       }, { merge: true });
-      setFeedback(feedback, 'Choix enregistré.', 'success');
+      setFeedback(choiceFeedback, 'Choix enregistré.', 'success');
     } catch (error) {
-      setFeedback(feedback, error.message, 'danger');
+      setFeedback(choiceFeedback, error.message, 'danger');
     }
   });
+
+  document.getElementById('save-remaining-teams-btn')?.addEventListener('click', saveRemainingTeams);
+  document.getElementById('declare-winner-btn')?.addEventListener('click', declareWinner);
 }
 
 function saveRemainingTeams() {
   if (!isAdmin()) return;
+
   const selected = [...document.querySelectorAll('.team-checkbox')]
     .filter((cb) => cb.checked)
     .map((cb) => cb.value);
@@ -627,32 +654,6 @@ function declareWinner() {
     .catch((error) => setFeedback(els.winnerAdminFeedback, error.message, 'danger'));
 }
 
-function getFinalWinnerCandidates() {
-  const winningTeam = state.winnerInfo?.winningTeam;
-  if (!winningTeam) return [];
-
-  return state.winnerChoices
-    .filter((choice) => choice.teamCode === winningTeam)
-    .map((choice) => {
-      const stats = getStatsForUser(choice.userId);
-      const user = state.users.find((u) => u.uid === choice.userId);
-      return {
-        userId: choice.userId,
-        displayName: user?.displayName || user?.email || choice.userId,
-        points: stats.points,
-        exact: stats.exact,
-        outcome: stats.outcome
-      };
-    })
-    .sort(
-      (a, b) =>
-        b.points - a.points ||
-        b.exact - a.exact ||
-        b.outcome - a.outcome ||
-        a.displayName.localeCompare(b.displayName)
-    );
-}
-
 function getPrediction(userId, matchId) {
   return state.predictions.find((p) => p.userId === userId && p.matchId === matchId) || null;
 }
@@ -660,10 +661,7 @@ function getPrediction(userId, matchId) {
 function getRanking() {
   return state.users
     .filter((user) => user.role === 'participant' || user.role === 'admin')
-    .map((user) => ({
-      ...user,
-      ...getStatsForUser(user.uid)
-    }))
+    .map((user) => ({ ...user, ...getStatsForUser(user.uid) }))
     .sort((a, b) =>
       b.points - a.points ||
       b.exact - a.exact ||
