@@ -10,6 +10,7 @@ import {
   getFirestore,
   collection,
   doc,
+  getDoc,
   setDoc,
   addDoc,
   updateDoc,
@@ -33,10 +34,10 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const WORLD_CUP_TEAMS = [
-  'Paraguay', 'Angleterre', 'Argentine', 'Australie', 'Belgique', 'Brésil',
-  'Canada', 'Croatie', 'Danemark', 'Espagne', 'États-Unis', 'France', 'Colombi',
-  'Ghana', 'Norvège', 'Suède', 'Equateur', 'Maroc', 'Mexique', 'RD Congo', 'Cap-Vert',
-  'Portugal', 'Sénégal', 'Suisse', 'Bosnie-Herzégovine', 'Autriche', 'Algérie', 'Egypte',
+  'Allemagne', 'Angleterre', 'Argentine', 'Australie', 'Belgique', 'Brésil',
+  'Canada', 'Croatie', 'Danemark', 'Espagne', 'États-Unis', 'France',
+  'Ghana', 'Iran', 'Italie', 'Japon', 'Maroc', 'Mexique', 'Pays-Bas',
+  'Portugal', 'Sénégal', 'Suisse', 'Uruguay'
 ];
 
 const state = {
@@ -202,8 +203,26 @@ function watchAuth() {
     if (els.app) els.app.hidden = false;
     if (els.signOutBtn) els.signOutBtn.hidden = false;
 
+    await ensureWinnerDoc();
     subscribeData(user.uid);
   });
+}
+
+async function ensureWinnerDoc() {
+  try {
+    const ref = doc(db, 'winners', 'current');
+    const snap = await getDoc(ref);
+    if (snap.exists()) return;
+
+    await setDoc(ref, {
+      remainingTeams: [...WORLD_CUP_TEAMS],
+      winningTeam: null,
+      deadlineTimestamp: new Date('2026-07-01T17:00:00.000Z'),
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.warn('ensureWinnerDoc failed', error);
+  }
 }
 
 function subscribeData(uid) {
@@ -237,21 +256,13 @@ function subscribeData(uid) {
   });
 
   const unsubWinnerInfo = onSnapshot(doc(db, 'winners', 'current'), (snap) => {
-    state.winnerInfo = snap.exists() ? { id: snap.id, ...snap.data() } : {
-      id: 'current',
-      remainingTeams: [],
-      winningTeam: null,
-      deadlineTimestamp: null
-    };
+    state.winnerInfo = snap.exists()
+      ? { id: snap.id, ...snap.data() }
+      : { id: 'current', remainingTeams: [...WORLD_CUP_TEAMS], winningTeam: null, deadlineTimestamp: null };
     renderWinnerView();
   }, (error) => {
     console.warn('winner info unavailable', error);
-    state.winnerInfo = {
-      id: 'current',
-      remainingTeams: [],
-      winningTeam: null,
-      deadlineTimestamp: null
-    };
+    state.winnerInfo = { id: 'current', remainingTeams: [...WORLD_CUP_TEAMS], winningTeam: null, deadlineTimestamp: null };
     renderWinnerView();
   });
 
@@ -542,12 +553,20 @@ function renderAdminResults() {
 function renderWinnerView() {
   if (!els.winnerPanel || !state.authUser) return;
 
-  const info = state.winnerInfo || { remainingTeams: [], winningTeam: null, deadlineTimestamp: null };
+  const info = state.winnerInfo || {
+    remainingTeams: [...WORLD_CUP_TEAMS],
+    winningTeam: null,
+    deadlineTimestamp: null
+  };
+
+  const remainingTeams = Array.isArray(info.remainingTeams) && info.remainingTeams.length
+    ? info.remainingTeams
+    : [...WORLD_CUP_TEAMS];
+
   const deadlineText = info.deadlineTimestamp?.toDate
     ? formatDate(info.deadlineTimestamp.toDate())
     : 'Mercredi 1 juillet 19:00';
 
-  const remainingTeams = Array.isArray(info.remainingTeams) ? info.remainingTeams : [];
   const myChoice = state.winnerChoices.find((c) => c.userId === state.authUser.uid);
   const locked = isDeadlinePassed() || !!info.winningTeam;
 
@@ -633,10 +652,13 @@ function saveRemainingTeams() {
     .map((cb) => cb.value);
 
   updateDoc(doc(db, 'winners', 'current'), {
-    remainingTeams: selected,
+    remainingTeams: selected.length ? selected : [...WORLD_CUP_TEAMS],
     updatedAt: serverTimestamp()
   })
-    .then(() => setFeedback(els.winnerAdminFeedback, 'Liste des pays restants enregistrée.', 'success'))
+    .then(() => {
+      setFeedback(els.winnerAdminFeedback, 'Liste des pays restants enregistrée.', 'success');
+      renderWinnerView();
+    })
     .catch((error) => setFeedback(els.winnerAdminFeedback, error.message, 'danger'));
 }
 
