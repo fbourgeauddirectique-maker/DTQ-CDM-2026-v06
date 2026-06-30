@@ -34,10 +34,10 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const WORLD_CUP_TEAMS = [
-  'Autriche', 'Angleterre', 'Argentine', 'Australie', 'Belgique', 'Brésil',
-  'Canada', 'Croatie', 'Danemark', 'Espagne', 'États-Unis', 'France', 'Algérie',
-  'Ghana', 'Bosnie-Herzégovine', 'RD Congo', 'Cap-Vert', 'Maroc', 'Mexique', 'Paraguay',
-  'Portugal', 'Sénégal', 'Suisse', 'Norvège', 'Suède', 'Equateur', 'Colombie'
+  'Allemagne', 'Angleterre', 'Argentine', 'Australie', 'Belgique', 'Brésil',
+  'Canada', 'Croatie', 'Danemark', 'Espagne', 'États-Unis', 'France',
+  'Ghana', 'Iran', 'Italie', 'Japon', 'Maroc', 'Mexique', 'Pays-Bas',
+  'Portugal', 'Sénégal', 'Suisse', 'Uruguay'
 ];
 
 const state = {
@@ -554,15 +554,12 @@ function renderWinnerView() {
   if (!els.winnerPanel || !state.authUser) return;
 
   const info = state.winnerInfo || {
-    remainingTeams: [...WORLD_CUP_TEAMS],
+    remainingTeams: [],
     winningTeam: null,
     deadlineTimestamp: null
   };
 
-  const remainingTeams = Array.isArray(info.remainingTeams) && info.remainingTeams.length
-    ? info.remainingTeams
-    : [...WORLD_CUP_TEAMS];
-
+  const remainingTeams = Array.isArray(info.remainingTeams) ? info.remainingTeams : [];
   const deadlineText = info.deadlineTimestamp?.toDate
     ? formatDate(info.deadlineTimestamp.toDate())
     : 'Mercredi 1 juillet 19:00';
@@ -617,14 +614,12 @@ function renderWinnerView() {
 
   els.winnerPanel.innerHTML = participantBlock + adminBlock;
 
-  const saveChoiceBtn = document.getElementById('save-winner-choice-btn');
-  const teamSelect = document.getElementById('winner-team-select');
-  const choiceFeedback = document.getElementById('winner-choice-feedback');
+  document.getElementById('save-winner-choice-btn')?.addEventListener('click', async () => {
+    const teamCode = document.getElementById('winner-team-select')?.value;
+    const feedback = document.getElementById('winner-choice-feedback');
 
-  saveChoiceBtn?.addEventListener('click', async () => {
-    const teamCode = teamSelect?.value;
     if (!teamCode) {
-      setFeedback(choiceFeedback, 'Veuillez choisir un pays.', 'danger');
+      setFeedback(feedback, 'Veuillez choisir un pays.', 'danger');
       return;
     }
 
@@ -634,9 +629,9 @@ function renderWinnerView() {
         teamCode,
         chosenAt: serverTimestamp()
       }, { merge: true });
-      setFeedback(choiceFeedback, 'Choix enregistré.', 'success');
+      setFeedback(feedback, 'Choix enregistré.', 'success');
     } catch (error) {
-      setFeedback(choiceFeedback, error.message, 'danger');
+      setFeedback(feedback, error.message, 'danger');
     }
   });
 
@@ -652,10 +647,14 @@ function saveRemainingTeams() {
     .map((cb) => cb.value);
 
   updateDoc(doc(db, 'winners', 'current'), {
-    remainingTeams: selected.length ? selected : [...WORLD_CUP_TEAMS],
+    remainingTeams: selected,
     updatedAt: serverTimestamp()
   })
     .then(() => {
+      state.winnerInfo = {
+        ...(state.winnerInfo || {}),
+        remainingTeams: selected
+      };
       setFeedback(els.winnerAdminFeedback, 'Liste des pays restants enregistrée.', 'success');
       renderWinnerView();
     })
