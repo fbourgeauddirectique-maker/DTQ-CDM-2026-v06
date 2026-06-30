@@ -33,10 +33,10 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const WORLD_CUP_TEAMS = [
-  'Angleterre', 'Argentine', 'Australie', 'Belgique', 'Brésil', 'Colombie',
-  'Canada', 'Croatie', 'Danemark', 'Espagne', 'États-Unis', 'France', 'Suède',
-  'Ghana', 'Cap-Vert', 'Algérie', 'Maroc', 'Mexique', 'Autriche', 'Equateur',
-  'Portugal', 'Sénégal', 'Suisse', 'Egypte', 'RD Congo', 'Paraguay', 'Bosnie-Herzégovine'
+  'Allemagne', 'Angleterre', 'Argentine', 'Australie', 'Belgique', 'Brésil',
+  'Canada', 'Croatie', 'Danemark', 'Espagne', 'États-Unis', 'France',
+  'Ghana', 'Iran', 'Italie', 'Japon', 'Maroc', 'Mexique', 'Pays-Bas',
+  'Portugal', 'Sénégal', 'Suisse', 'Uruguay'
 ];
 
 const state = {
@@ -82,10 +82,6 @@ const els = {
   adminSettingsCard: document.getElementById('admin-settings-card'),
   adminResultsCard: document.getElementById('admin-results-card'),
   winnerPanel: document.getElementById('winner-panel'),
-  adminWinnerCard: document.getElementById('admin-winner-card'),
-  winnerAdminForm: document.getElementById('winner-admin-form'),
-  saveRemainingTeamsBtn: document.getElementById('save-remaining-teams-btn'),
-  declareWinnerBtn: document.getElementById('declare-winner-btn'),
   winnerAdminFeedback: document.getElementById('winner-admin-feedback'),
   themeToggle: document.getElementById('theme-toggle')
 };
@@ -176,9 +172,6 @@ function bindUI() {
     }
   });
 
-  els.saveRemainingTeamsBtn?.addEventListener('click', saveRemainingTeams);
-  els.declareWinnerBtn?.addEventListener('click', declareWinner);
-
   els.themeToggle.addEventListener('click', () => {
     const root = document.documentElement;
     const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
@@ -256,7 +249,6 @@ function render() {
   els.currentUserRole.textContent = state.profile?.role || 'Aucun rôle';
   els.adminSettingsCard.hidden = !isAdmin();
   els.adminResultsCard.hidden = !isAdmin();
-  els.adminWinnerCard.hidden = !isAdmin();
 
   renderKpis();
   renderDashboard();
@@ -556,33 +548,40 @@ function renderWinnerView() {
     </article>
   `;
 
-  const adminBlock = isAdmin()
-    ? `
-      <article class="card">
-        <h3>Admin — pays encore en course</h3>
-        <p class="muted">Cochez les pays encore en course puis enregistrez.</p>
-        <div class="form-grid" id="winner-admin-teams-list">
-          ${WORLD_CUP_TEAMS.map((team) => `
-            <label style="display:flex;align-items:center;gap:.5rem;">
-              <input type="checkbox" class="team-checkbox" value="${escapeHtml(team)}" ${remainingTeams.includes(team) ? 'checked' : ''}>
-              <span>${escapeHtml(team)}</span>
-            </label>
-          `).join('')}
-        </div>
-      </article>
-    `
-    : '';
+  const adminBlock = isAdmin() ? `
+    <article class="card">
+      <h3>Admin — pays encore en course</h3>
+      <p class="muted">Cochez les pays encore en course puis cliquez sur enregistrer.</p>
+      <div class="form-grid" id="winner-admin-teams-list">
+        ${WORLD_CUP_TEAMS.map((team) => `
+          <label style="display:flex;align-items:center;gap:.5rem;">
+            <input type="checkbox" class="team-checkbox" value="${escapeHtml(team)}" ${remainingTeams.includes(team) ? 'checked' : ''}>
+            <span>${escapeHtml(team)}</span>
+          </label>
+        `).join('')}
+      </div>
+      <div class="row wrap" style="margin-top: 1rem;">
+        <button type="button" class="btn btn-primary" id="save-remaining-teams-btn">
+          Enregistrer la liste
+        </button>
+        <button type="button" class="btn" id="declare-winner-btn">
+          Déclarer le vainqueur
+        </button>
+      </div>
+      <p class="helper" id="winner-admin-feedback"></p>
+    </article>
+  ` : '';
 
   els.winnerPanel.innerHTML = participantBlock + adminBlock;
 
-  const saveBtn = document.getElementById('save-winner-choice-btn');
-  const select = document.getElementById('winner-team-select');
-  const feedback = document.getElementById('winner-choice-feedback');
+  const saveChoiceBtn = document.getElementById('save-winner-choice-btn');
+  const teamSelect = document.getElementById('winner-team-select');
+  const choiceFeedback = document.getElementById('winner-choice-feedback');
 
-  saveBtn?.addEventListener('click', async () => {
-    const teamCode = select.value;
+  saveChoiceBtn?.addEventListener('click', async () => {
+    const teamCode = teamSelect.value;
     if (!teamCode) {
-      setFeedback(feedback, 'Veuillez choisir un pays.', 'danger');
+      setFeedback(choiceFeedback, 'Veuillez choisir un pays.', 'danger');
       return;
     }
 
@@ -592,15 +591,22 @@ function renderWinnerView() {
         teamCode,
         chosenAt: serverTimestamp()
       }, { merge: true });
-      setFeedback(feedback, 'Choix enregistré.', 'success');
+      setFeedback(choiceFeedback, 'Choix enregistré.', 'success');
     } catch (error) {
-      setFeedback(feedback, error.message, 'danger');
+      setFeedback(choiceFeedback, error.message, 'danger');
     }
   });
+
+  const saveRemainingBtn = document.getElementById('save-remaining-teams-btn');
+  const declareWinnerBtn = document.getElementById('declare-winner-btn');
+
+  saveRemainingBtn?.addEventListener('click', saveRemainingTeams);
+  declareWinnerBtn?.addEventListener('click', declareWinner);
 }
 
 function saveRemainingTeams() {
   if (!isAdmin()) return;
+
   const selected = [...document.querySelectorAll('.team-checkbox')]
     .filter((cb) => cb.checked)
     .map((cb) => cb.value);
@@ -615,6 +621,7 @@ function saveRemainingTeams() {
 
 function declareWinner() {
   if (!isAdmin()) return;
+
   const teams = state.winnerInfo?.remainingTeams || [];
   const winner = window.prompt(`Entrez le pays vainqueur parmi : ${teams.join(', ')}`);
   if (!winner) return;
@@ -751,4 +758,9 @@ function escapeHtml(value) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
+}
+
+function cleanupListeners() {
+  state.unsubscribers.forEach((unsub) => unsub && unsub());
+  state.unsubscribers = [];
 }
