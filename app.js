@@ -34,10 +34,10 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const WORLD_CUP_TEAMS = [
-  'Allemagne', 'Angleterre', 'Argentine', 'Australie', 'Belgique', 'Brésil',
-  'Canada', 'Croatie', 'Danemark', 'Espagne', 'États-Unis', 'France',
-  'Ghana', 'Iran', 'Italie', 'Japon', 'Maroc', 'Mexique', 'Pays-Bas',
-  'Portugal', 'Sénégal', 'Suisse', 'Uruguay'
+    'Autriche', 'Angleterre', 'Argentine', 'Australie', 'Belgique', 'Brésil',
+  'Canada', 'Croatie', 'Danemark', 'Espagne', 'États-Unis', 'France', 'Algérie',
+  'Ghana', 'Bosnie-Herzégovine', 'RD Congo', 'Cap-Vert', 'Maroc', 'Mexique', 'Paraguay',
+  'Portugal', 'Sénégal', 'Suisse', 'Norvège', 'Suède', 'Equateur'
 ];
 
 const state = {
@@ -637,6 +637,8 @@ function renderWinnerView() {
 
   document.getElementById('save-remaining-teams-btn')?.addEventListener('click', saveRemainingTeams);
   document.getElementById('declare-winner-btn')?.addEventListener('click', declareWinner);
+
+  renderWinningPlayers();
 }
 
 function saveRemainingTeams() {
@@ -671,8 +673,84 @@ function declareWinner() {
     winningTeam: winner,
     updatedAt: serverTimestamp()
   })
-    .then(() => setFeedback(els.winnerAdminFeedback, 'Vainqueur déclaré.', 'success'))
+    .then(() => {
+      setFeedback(els.winnerAdminFeedback, 'Vainqueur déclaré.', 'success');
+      state.winnerInfo = {
+        ...(state.winnerInfo || {}),
+        winningTeam: winner
+      };
+      renderWinnerView();
+    })
     .catch((error) => setFeedback(els.winnerAdminFeedback, error.message, 'danger'));
+}
+
+function renderWinningPlayers() {
+  if (!els.winnerPanel) return;
+
+  const winningTeam = state.winnerInfo?.winningTeam;
+  if (!winningTeam) return;
+
+  const winners = state.winnerChoices
+    .filter((choice) => choice.teamCode === winningTeam)
+    .map((choice) => {
+      const user = state.users.find((u) => u.uid === choice.userId);
+      const stats = getStatsForUser(choice.userId);
+      return {
+        uid: choice.userId,
+        name: user?.displayName || user?.email || choice.userId,
+        points: stats.points,
+        exact: stats.exact,
+        outcome: stats.outcome
+      };
+    })
+    .sort((a, b) =>
+      b.points - a.points ||
+      b.exact - a.exact ||
+      b.outcome - a.outcome ||
+      a.name.localeCompare(b.name)
+    );
+
+  const resultBoxId = 'winning-players-result';
+  let box = document.getElementById(resultBoxId);
+
+  if (!box) {
+    box = document.createElement('article');
+    box.className = 'card';
+    box.id = resultBoxId;
+    els.winnerPanel.appendChild(box);
+  }
+
+  if (!winners.length) {
+    box.innerHTML = `
+      <h3>Gagnants du pari</h3>
+      <p class="muted">Personne n’a choisi ce vainqueur.</p>
+    `;
+    return;
+  }
+
+  box.innerHTML = `
+    <h3>Gagnants du pari</h3>
+    <table class="ranking-table">
+      <thead>
+        <tr>
+          <th>Participant</th>
+          <th>Points</th>
+          <th>Scores exacts</th>
+          <th>Bons résultats</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${winners.map((w, index) => `
+          <tr>
+            <td>${index + 1}. ${escapeHtml(w.name)}</td>
+            <td>${w.points}</td>
+            <td>${w.exact}</td>
+            <td>${w.outcome}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
 }
 
 function getPrediction(userId, matchId) {
