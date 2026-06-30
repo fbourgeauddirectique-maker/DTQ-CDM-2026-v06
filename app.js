@@ -33,10 +33,10 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const WORLD_CUP_TEAMS = [
-  'Allemagne', 'Angleterre', 'Argentine', 'Australie', 'Belgique', 'Brésil',
-  'Canada', 'Croatie', 'Danemark', 'Espagne', 'États-Unis', 'France',
-  'Ghana', 'Iran', 'Italie', 'Japon', 'Maroc', 'Mexique', 'Pays-Bas',
-  'Portugal', 'Sénégal', 'Suisse', 'Uruguay'
+  'Angleterre', 'Argentine', 'Australie', 'Belgique', 'Brésil', 'Colombie',
+  'Canada', 'Croatie', 'Danemark', 'Espagne', 'États-Unis', 'France', 'Suède',
+  'Ghana', 'Cap-Vert', 'Algérie', 'Maroc', 'Mexique', 'Autriche', 'Equateur',
+  'Portugal', 'Sénégal', 'Suisse', 'Egypte', 'RD Congo', 'Paraguay', 'Bosnie-Herzégovine'
 ];
 
 const state = {
