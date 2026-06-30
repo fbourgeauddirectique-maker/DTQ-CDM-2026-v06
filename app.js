@@ -37,7 +37,7 @@ const WORLD_CUP_TEAMS = [
   'Autriche', 'Angleterre', 'Argentine', 'Australie', 'Belgique', 'Brésil',
   'Canada', 'Croatie', 'Danemark', 'Espagne', 'États-Unis', 'France', 'Algérie',
   'Ghana', 'Bosnie-Herzégovine', 'RD Congo', 'Cap-Vert', 'Maroc', 'Mexique', 'Paraguay',
-  'Portugal', 'Sénégal', 'Suisse', 'Norvège', 'Suède', 'Equateur'
+  'Portugal', 'Sénégal', 'Suisse', 'Norvège', 'Suède', 'Equateur', 'Colombie'
 ];
 
 const state = {
