@@ -32,6 +32,13 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+const WORLD_CUP_TEAMS = [
+  'Allemagne', 'Angleterre', 'Argentine', 'Australie', 'Belgique', 'Brésil',
+  'Canada', 'Croatie', 'Danemark', 'Espagne', 'États-Unis', 'France',
+  'Ghana', 'Iran', 'Italie', 'Japon', 'Maroc', 'Mexique', 'Pays-Bas',
+  'Portugal', 'Sénégal', 'Suisse', 'Uruguay'
+];
+
 const state = {
   authUser: null,
   profile: null,
@@ -39,6 +46,8 @@ const state = {
   matches: [],
   predictions: [],
   filter: 'all',
+  winnerInfo: null,
+  winnerChoices: [],
   unsubscribers: []
 };
 
@@ -72,6 +81,12 @@ const els = {
   adminResults: document.getElementById('admin-results'),
   adminSettingsCard: document.getElementById('admin-settings-card'),
   adminResultsCard: document.getElementById('admin-results-card'),
+  winnerPanel: document.getElementById('winner-panel'),
+  adminWinnerCard: document.getElementById('admin-winner-card'),
+  winnerAdminForm: document.getElementById('winner-admin-form'),
+  saveRemainingTeamsBtn: document.getElementById('save-remaining-teams-btn'),
+  declareWinnerBtn: document.getElementById('declare-winner-btn'),
+  winnerAdminFeedback: document.getElementById('winner-admin-feedback'),
   themeToggle: document.getElementById('theme-toggle')
 };
 
@@ -87,6 +102,7 @@ function bindUI() {
       btn.classList.add('active');
       document.getElementById(`view-${btn.dataset.view}`).classList.add('active');
       if (btn.dataset.view === 'ranking') renderRankingEvolution();
+      if (btn.dataset.view === 'winner') renderWinnerView();
     });
   });
 
@@ -160,6 +176,9 @@ function bindUI() {
     }
   });
 
+  els.saveRemainingTeamsBtn?.addEventListener('click', saveRemainingTeams);
+  els.declareWinnerBtn?.addEventListener('click', declareWinner);
+
   els.themeToggle.addEventListener('click', () => {
     const root = document.documentElement;
     const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
@@ -212,7 +231,17 @@ function subscribeData(uid) {
     render();
   });
 
-  state.unsubscribers = [unsubUsers, unsubMatches, unsubPredictions];
+  const unsubWinnerInfo = onSnapshot(doc(db, 'winners', 'current'), (snap) => {
+    state.winnerInfo = snap.exists() ? { id: snap.id, ...snap.data() } : null;
+    renderWinnerView();
+  });
+
+  const unsubWinnerChoices = onSnapshot(query(collection(db, 'winnerChoices')), (snapshot) => {
+    state.winnerChoices = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+    renderWinnerView();
+  });
+
+  state.unsubscribers = [unsubUsers, unsubMatches, unsubPredictions, unsubWinnerInfo, unsubWinnerChoices];
 }
 
 function cleanupListeners() {
@@ -227,6 +256,7 @@ function render() {
   els.currentUserRole.textContent = state.profile?.role || 'Aucun rôle';
   els.adminSettingsCard.hidden = !isAdmin();
   els.adminResultsCard.hidden = !isAdmin();
+  els.adminWinnerCard.hidden = !isAdmin();
 
   renderKpis();
   renderDashboard();
@@ -235,6 +265,7 @@ function render() {
   populateRankingParticipantsSelect();
   renderRankingEvolution();
   renderAdminResults();
+  renderWinnerView();
 }
 
 function renderKpis() {
@@ -487,6 +518,141 @@ function renderAdminResults() {
   });
 }
 
+function renderWinnerView() {
+  if (!els.winnerPanel || !state.authUser) return;
+
+  const deadlineText = state.winnerInfo?.deadlineTimestamp?.toDate
+    ? formatDate(state.winnerInfo.deadlineTimestamp.toDate())
+    : 'Mercredi 1 juillet 19:00';
+
+  const remainingTeams = state.winnerInfo?.remainingTeams || [];
+  const myChoice = state.winnerChoices.find((c) => c.userId === state.authUser.uid);
+  const locked = isDeadlinePassed() || !!state.winnerInfo?.winningTeam;
+
+  const participantBlock = `
+    <article class="card">
+      <h3>Mon choix</h3>
+      <p class="muted">Date limite : ${deadlineText}</p>
+      <div class="form-grid">
+        <label>
+          <span>Équipe choisie</span>
+          <select id="winner-team-select" class="input" ${locked ? 'disabled' : ''}>
+            <option value="">Choisir un pays</option>
+            ${remainingTeams
+              .map((team) => `
+                <option value="${escapeHtml(team)}" ${myChoice?.teamCode === team ? 'selected' : ''}>
+                  ${escapeHtml(team)}
+                </option>
+              `)
+              .join('')}
+          </select>
+        </label>
+        <button type="button" class="btn btn-primary" id="save-winner-choice-btn" ${locked ? 'disabled' : ''}>
+          Enregistrer
+        </button>
+      </div>
+      <p class="helper" id="winner-choice-feedback"></p>
+      ${myChoice?.teamCode ? `<p class="helper">Votre choix actuel : ${escapeHtml(myChoice.teamCode)}</p>` : ''}
+    </article>
+  `;
+
+  const adminBlock = isAdmin()
+    ? `
+      <article class="card">
+        <h3>Admin — pays encore en course</h3>
+        <p class="muted">Cochez les pays encore en course puis enregistrez.</p>
+        <div class="form-grid" id="winner-admin-teams-list">
+          ${WORLD_CUP_TEAMS.map((team) => `
+            <label style="display:flex;align-items:center;gap:.5rem;">
+              <input type="checkbox" class="team-checkbox" value="${escapeHtml(team)}" ${remainingTeams.includes(team) ? 'checked' : ''}>
+              <span>${escapeHtml(team)}</span>
+            </label>
+          `).join('')}
+        </div>
+      </article>
+    `
+    : '';
+
+  els.winnerPanel.innerHTML = participantBlock + adminBlock;
+
+  const saveBtn = document.getElementById('save-winner-choice-btn');
+  const select = document.getElementById('winner-team-select');
+  const feedback = document.getElementById('winner-choice-feedback');
+
+  saveBtn?.addEventListener('click', async () => {
+    const teamCode = select.value;
+    if (!teamCode) {
+      setFeedback(feedback, 'Veuillez choisir un pays.', 'danger');
+      return;
+    }
+
+    try {
+      await setDoc(doc(db, 'winnerChoices', state.authUser.uid), {
+        userId: state.authUser.uid,
+        teamCode,
+        chosenAt: serverTimestamp()
+      }, { merge: true });
+      setFeedback(feedback, 'Choix enregistré.', 'success');
+    } catch (error) {
+      setFeedback(feedback, error.message, 'danger');
+    }
+  });
+}
+
+function saveRemainingTeams() {
+  if (!isAdmin()) return;
+  const selected = [...document.querySelectorAll('.team-checkbox')]
+    .filter((cb) => cb.checked)
+    .map((cb) => cb.value);
+
+  updateDoc(doc(db, 'winners', 'current'), {
+    remainingTeams: selected,
+    updatedAt: serverTimestamp()
+  })
+    .then(() => setFeedback(els.winnerAdminFeedback, 'Liste des pays restants enregistrée.', 'success'))
+    .catch((error) => setFeedback(els.winnerAdminFeedback, error.message, 'danger'));
+}
+
+function declareWinner() {
+  if (!isAdmin()) return;
+  const teams = state.winnerInfo?.remainingTeams || [];
+  const winner = window.prompt(`Entrez le pays vainqueur parmi : ${teams.join(', ')}`);
+  if (!winner) return;
+
+  updateDoc(doc(db, 'winners', 'current'), {
+    winningTeam: winner,
+    updatedAt: serverTimestamp()
+  })
+    .then(() => setFeedback(els.winnerAdminFeedback, 'Vainqueur déclaré.', 'success'))
+    .catch((error) => setFeedback(els.winnerAdminFeedback, error.message, 'danger'));
+}
+
+function getFinalWinnerCandidates() {
+  const winningTeam = state.winnerInfo?.winningTeam;
+  if (!winningTeam) return [];
+
+  return state.winnerChoices
+    .filter((choice) => choice.teamCode === winningTeam)
+    .map((choice) => {
+      const stats = getStatsForUser(choice.userId);
+      const user = state.users.find((u) => u.uid === choice.userId);
+      return {
+        userId: choice.userId,
+        displayName: user?.displayName || user?.email || choice.userId,
+        points: stats.points,
+        exact: stats.exact,
+        outcome: stats.outcome
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.points - a.points ||
+        b.exact - a.exact ||
+        b.outcome - a.outcome ||
+        a.displayName.localeCompare(b.displayName)
+    );
+}
+
 function getPrediction(userId, matchId) {
   return state.predictions.find((p) => p.userId === userId && p.matchId === matchId) || null;
 }
@@ -543,14 +709,21 @@ function isLocked(match) {
   return new Date(match.kickoff).getTime() <= Date.now() || isFinished(match);
 }
 
+function isAdmin() {
+  return state.profile?.role === 'admin';
+}
+
+function isDeadlinePassed() {
+  const deadline = state.winnerInfo?.deadlineTimestamp?.toDate
+    ? state.winnerInfo.deadlineTimestamp.toDate().getTime()
+    : new Date('2026-07-01T19:00:00+02:00').getTime();
+  return Date.now() > deadline;
+}
+
 function matchStatus(match) {
   if (isFinished(match)) return `Terminé ${match.homeScore}-${match.awayScore}`;
   if (isLocked(match)) return 'Verrouillé';
   return 'Ouvert';
-}
-
-function isAdmin() {
-  return state.profile?.role === 'admin';
 }
 
 function formatDate(iso) {
@@ -558,6 +731,7 @@ function formatDate(iso) {
 }
 
 function setFeedback(el, message, type) {
+  if (!el) return;
   el.textContent = message;
   el.className = `helper ${type}`;
 }
@@ -568,4 +742,13 @@ function mapAuthError(error) {
   if (code.includes('email-already-in-use')) return 'Cet email est déjà utilisé.';
   if (code.includes('weak-password')) return 'Mot de passe trop faible (6 caractères minimum).';
   return error.message || 'Une erreur est survenue.';
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 }
