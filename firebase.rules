@@ -6,45 +6,39 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isOwner(uid) {
-      return signedIn() && request.auth.uid == uid;
-    }
-
     function isAdmin() {
-      return signedIn() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
     match /users/{userId} {
       allow read: if signedIn();
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId) || isAdmin();
+      allow create: if signedIn() && request.auth.uid == userId;
+      allow update: if signedIn() && request.auth.uid == userId || isAdmin();
       allow delete: if isAdmin();
     }
 
     match /matches/{matchId} {
       allow read: if signedIn();
-      allow create, update, delete: if isAdmin();
+      allow write: if isAdmin();
     }
 
     match /predictions/{predictionId} {
       allow read: if signedIn();
       allow create, update: if signedIn() && request.resource.data.userId == request.auth.uid;
-      allow delete: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if signedIn() && request.auth.uid == resource.data.userId || isAdmin();
     }
 
     match /winnerChoices/{userId} {
       allow read: if signedIn();
-      allow create, update: if signedIn()
-        && request.auth.uid == userId
-        && request.resource.data.userId == request.auth.uid;
-      allow delete: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create, update: if signedIn() && request.auth.uid == userId;
+      allow delete: if signedIn() && request.auth.uid == userId || isAdmin();
     }
 
     match /winners/{docId} {
       allow read: if signedIn();
-      allow create, update, delete: if isAdmin();
+      allow write: if isAdmin();
     }
   }
 }
