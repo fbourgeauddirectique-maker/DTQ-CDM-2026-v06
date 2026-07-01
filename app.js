@@ -34,10 +34,10 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const WORLD_CUP_TEAMS = [
-    'Autriche', 'Angleterre', 'Argentine', 'Australie', 'Belgique', 'Brésil',
-  'Canada', 'Croatie', 'Danemark', 'Espagne', 'États-Unis', 'France', 'Algérie',
-  'Ghana', 'Bosnie-Herzégovine', 'RD Congo', 'Cap-Vert', 'Maroc', 'Mexique', 'Paraguay',
-  'Portugal', 'Sénégal', 'Suisse', 'Norvège', 'Suède', 'Equateur'
+  'Allemagne', 'Angleterre', 'Argentine', 'Australie', 'Belgique', 'Brésil',
+  'Canada', 'Croatie', 'Danemark', 'Espagne', 'États-Unis', 'France',
+  'Ghana', 'Iran', 'Italie', 'Japon', 'Maroc', 'Mexique', 'Pays-Bas',
+  'Portugal', 'Sénégal', 'Suisse', 'Uruguay'
 ];
 
 const state = {
@@ -567,6 +567,11 @@ function renderWinnerView() {
   const myChoice = state.winnerChoices.find((c) => c.userId === state.authUser.uid);
   const locked = isDeadlinePassed() || !!info.winningTeam;
 
+  const aliveParticipants = getRanking().filter((user) => {
+    const choice = state.winnerChoices.find((c) => c.userId === user.uid);
+    return choice && remainingTeams.includes(choice.teamCode);
+  });
+
   const participantBlock = `
     <article class="card">
       <h3>Mon choix</h3>
@@ -589,6 +594,38 @@ function renderWinnerView() {
       </div>
       <p class="helper" id="winner-choice-feedback"></p>
       ${myChoice?.teamCode ? `<p class="helper">Votre choix actuel : ${escapeHtml(myChoice.teamCode)}</p>` : ''}
+    </article>
+
+    <article class="card">
+      <h3>Participants encore en lice</h3>
+      ${
+        aliveParticipants.length
+          ? `
+            <table class="ranking-table">
+              <thead>
+                <tr>
+                  <th>Rang</th>
+                  <th>Participant</th>
+                  <th>Points</th>
+                  <th>Scores exacts</th>
+                  <th>Bons résultats</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${aliveParticipants.map((user, index) => `
+                  <tr>
+                    <td>${index + 1}</td>
+                    <td>${escapeHtml(user.displayName || user.email)}</td>
+                    <td>${user.points}</td>
+                    <td>${user.exact}</td>
+                    <td>${user.outcome}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `
+          : `<p class="muted">Aucun participant encore en lice pour le moment.</p>`
+      }
     </article>
   `;
 
