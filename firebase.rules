@@ -1,4 +1,5 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -6,53 +7,20 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isOwner(uid) {
-      return signedIn() && request.auth.uid == uid;
-    }
-
-    function userDoc() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid));
-    }
-
-    function userDocExists() {
-      return signedIn() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
     }
 
     function isAdmin() {
-      return userDocExists() &&
-        userDoc().data.role == 'admin';
-    }
-
-    function winnerDocExists() {
-      return exists(/databases/$(database)/documents/winners/current);
-    }
-
-    function winnerDoc() {
-      return get(/databases/$(database)/documents/winners/current);
-    }
-
-    function winnerDeadlineOpen() {
-      return winnerDocExists() &&
-        winnerDoc().data.deadlineTimestamp is timestamp &&
-        request.time < winnerDoc().data.deadlineTimestamp;
-    }
-
-    function winnerNotDeclared() {
-      return !winnerDocExists() ||
-        winnerDoc().data.winningTeam == null;
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
     match /users/{userId} {
       allow read: if signedIn();
-
-      allow create: if isOwner(userId) &&
-        request.resource.data.uid == request.auth.uid &&
-        request.resource.data.email == request.auth.token.email;
-
-      allow update: if (isOwner(userId) || isAdmin()) &&
-        request.resource.data.uid == resource.data.uid;
-
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
     }
 
@@ -63,35 +31,31 @@ service cloud.firestore {
 
     match /predictions/{predictionId} {
       allow read: if signedIn();
-
-      allow create, update: if signedIn() &&
-        request.resource.data.userId == request.auth.uid;
-
-      allow delete: if (signedIn() && resource.data.userId == request.auth.uid) || isAdmin();
-    }
-
-    match /winners/{docId} {
-      allow read: if signedIn();
-
-      allow create: if isAdmin() &&
-        docId == 'current';
-
-      allow update: if isAdmin() &&
-        docId == 'current';
-
+      allow create, update: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.matchId is string
+        && request.resource.data.home is int
+        && request.resource.data.away is int;
       allow delete: if isAdmin();
     }
 
     match /winnerChoices/{userId} {
       allow read: if signedIn();
+      allow create, update: if isOwner(userId)
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.teamCode is string;
+      allow delete: if isAdmin();
+    }
 
-      allow create, update: if isOwner(userId) &&
-        request.resource.data.userId == request.auth.uid &&
-        request.resource.data.teamCode is string &&
-        winnerDeadlineOpen() &&
-        winnerNotDeclared();
+    match /winners/{docId} {
+      allow read: if signedIn();
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
 
-      allow delete: if isOwner(userId) || isAdmin();
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
