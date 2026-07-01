@@ -409,6 +409,7 @@ function buildMatchCard(match) {
 function renderRanking() {
   if (!els.rankingBody) return;
   const ranking = getRanking();
+
   els.rankingBody.innerHTML = ranking.map((user, index) => `
     <tr>
       <td>${index + 1}</td>
