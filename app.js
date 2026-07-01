@@ -1,74 +1,97 @@
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import {
-  getAuth,
-  onAuthStateChanged,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut
-} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import {
-  getFirestore,
-  collection,
-  doc,
-  getDoc,
-  setDoc,
-  addDoc,
-  updateDoc,
-  onSnapshot,
-  query,
-  orderBy,
-  serverTimestamp
-} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAVQcizGD4EmcCsIQ52iONzR87wskvgLOI",
-  authDomain: "dtq-coupe-du-monde-2026.firebaseapp.com",
-  projectId: "dtq-coupe-du-monde-2026",
-  storageBucket: "dtq-coupe-du-monde-2026.firebasestorage.app",
-  messagingSenderId: "944672750520",
-  appId: "1:944672750520:web:42a817af4260007814ad4d"
-};
+    function signedIn() {
+      return request.auth != null;
+    }
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
 
-const WORLD_CUP_TEAMS = [
-  'Allemagne', 'Angleterre', 'Argentine', 'Australie', 'Belgique', 'Brésil',
-  'Canada', 'Croatie', 'Danemark', 'Espagne', 'États-Unis', 'France',
-  'Ghana', 'Iran', 'Italie', 'Japon', 'Maroc', 'Mexique', 'Pays-Bas',
-  'Portugal', 'Sénégal', 'Suisse', 'Uruguay'
-];
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
 
-const state = {
-  authUser: null,
-  profile: null,
-  users: [],
-  matches: [],
-  predictions: [],
-  filter: 'all',
-  winnerInfo: null,
-  winnerChoices: [],
-  unsubscribers: []
-};
+    function userDocExists() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
 
-const els = {
-  authPanel: document.getElementById('auth-panel'),
-  app: document.getElementById('app'),
-  authForm: document.getElementById('auth-form'),
-  email: document.getElementById('auth-email'),
-  password: document.getElementById('auth-password'),
-  registerBtn: document.getElementById('register-btn'),
-  authFeedback: document.getElementById('auth-feedback'),
-  signOutBtn: document.getElementById('sign-out-btn'),
-  currentUserName: document.getElementById('current-user-name'),
-  currentUserRole: document.getElementById('current-user-role'),
-  kpis: document.getElementById('kpis'),
-  dashboardMatches: document.getElementById('dashboard-matches'),
-  mySummary: document.getElementById('my-summary'),
-  matchesList: document.getElementById('matches-list'),
-  rankingBody: document.getElementById('ranking-body'),
-  rankingParticipants: document.getElementById('ranking-participants'),
-  rankingEvolutionChart: document.getElementById('ranking-evolution-chart'),
-  profileForm: document.getElementById('profile-form'),
-  dis
+    function isAdmin() {
+      return userDocExists() &&
+        userDoc().data.role == 'admin';
+    }
+
+    function winnerDocExists() {
+      return exists(/databases/$(database)/documents/winners/current);
+    }
+
+    function winnerDoc() {
+      return get(/databases/$(database)/documents/winners/current);
+    }
+
+    function winnerDeadlineOpen() {
+      return winnerDocExists() &&
+        winnerDoc().data.deadlineTimestamp is timestamp &&
+        request.time < winnerDoc().data.deadlineTimestamp;
+    }
+
+    function winnerNotDeclared() {
+      return !winnerDocExists() ||
+        winnerDoc().data.winningTeam == null;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn();
+
+      allow create: if isOwner(userId) &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.email == request.auth.token.email;
+
+      allow update: if (isOwner(userId) || isAdmin()) &&
+        request.resource.data.uid == resource.data.uid;
+
+      allow delete: if isAdmin();
+    }
+
+    match /matches/{matchId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /predictions/{predictionId} {
+      allow read: if signedIn();
+
+      allow create, update: if signedIn() &&
+        request.resource.data.userId == request.auth.uid;
+
+      allow delete: if (signedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+    }
+
+    match /winners/{docId} {
+      allow read: if signedIn();
+
+      allow create: if isAdmin() &&
+        docId == 'current';
+
+      allow update: if isAdmin() &&
+        docId == 'current';
+
+      allow delete: if isAdmin();
+    }
+
+    match /winnerChoices/{userId} {
+      allow read: if signedIn();
+
+      allow create, update: if isOwner(userId) &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.teamCode is string &&
+        winnerDeadlineOpen() &&
+        winnerNotDeclared();
+
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+  }
+}
