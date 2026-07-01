@@ -217,7 +217,7 @@ async function ensureWinnerDoc() {
     await setDoc(ref, {
       remainingTeams: [...WORLD_CUP_TEAMS],
       winningTeam: null,
-      deadlineTimestamp: new Date('2026-07-01T17:00:00.000Z'),
+      deadlineTimestamp: new Date('2026-07-02T19:00:00.000Z'),
       updatedAt: serverTimestamp()
     });
   } catch (error) {
