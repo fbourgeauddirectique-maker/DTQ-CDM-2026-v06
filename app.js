@@ -259,20 +259,20 @@ function subscribeData(uid) {
     state.winnerInfo = snap.exists()
       ? { id: snap.id, ...snap.data() }
       : { id: 'current', remainingTeams: [...WORLD_CUP_TEAMS], winningTeam: null, deadlineTimestamp: null };
-    renderWinnerView();
+    render();
   }, (error) => {
     console.warn('winner info unavailable', error);
     state.winnerInfo = { id: 'current', remainingTeams: [...WORLD_CUP_TEAMS], winningTeam: null, deadlineTimestamp: null };
-    renderWinnerView();
+    render();
   });
 
   const unsubWinnerChoices = onSnapshot(query(collection(db, 'winnerChoices')), (snapshot) => {
     state.winnerChoices = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-    renderWinnerView();
+    render();
   }, (error) => {
     console.warn('winner choices unavailable', error);
     state.winnerChoices = [];
-    renderWinnerView();
+    render();
   });
 
   state.unsubscribers = [unsubUsers, unsubMatches, unsubPredictions, unsubWinnerInfo, unsubWinnerChoices];
@@ -334,6 +334,7 @@ function renderDashboard() {
   els.mySummary.innerHTML = [
     ['Mon rang', rank ? rank : '—'],
     ['Mes points', myStats.points],
+    ['Bonus vainqueur', myStats.bonusWinner || 0],
     ['Scores exacts', myStats.exact],
     ['Bons résultats', myStats.outcome],
     ['Pronostics saisis', myStats.predictions]
@@ -413,6 +414,7 @@ function renderRanking() {
       <td>${index + 1}</td>
       <td>${escapeHtml(user.displayName || user.email)}</td>
       <td>${user.points}</td>
+      <td>${user.bonusWinner || 0}</td>
       <td>${user.exact}</td>
       <td>${user.outcome}</td>
     </tr>
@@ -468,6 +470,16 @@ function buildEvolutionByMatch() {
     });
     series.forEach((item) => item.values.push(cumulativeByUser.get(item.uid) || 0));
   });
+
+  const winningTeam = state.winnerInfo?.winningTeam;
+  if (winningTeam && series.length) {
+    series.forEach((item) => {
+      const choice = state.winnerChoices.find((c) => c.userId === item.uid);
+      if (choice?.teamCode === winningTeam && item.values.length) {
+        item.values[item.values.length - 1] += 10;
+      }
+    });
+  }
 
   return { matchLabels, series };
 }
@@ -607,6 +619,7 @@ function renderWinnerView() {
                   <th>Rang</th>
                   <th>Participant</th>
                   <th>Points</th>
+                  <th>Bonus vainqueur</th>
                   <th>Scores exacts</th>
                   <th>Bons résultats</th>
                 </tr>
@@ -617,6 +630,7 @@ function renderWinnerView() {
                     <td>${index + 1}</td>
                     <td>${escapeHtml(user.displayName || user.email)}</td>
                     <td>${user.points}</td>
+                    <td>${user.bonusWinner || 0}</td>
                     <td>${user.exact}</td>
                     <td>${user.outcome}</td>
                   </tr>
@@ -736,6 +750,7 @@ function renderWinningPlayers() {
         uid: choice.userId,
         name: user?.displayName || user?.email || choice.userId,
         points: stats.points,
+        bonusWinner: stats.bonusWinner || 0,
         exact: stats.exact,
         outcome: stats.outcome
       };
@@ -772,6 +787,7 @@ function renderWinningPlayers() {
         <tr>
           <th>Participant</th>
           <th>Points</th>
+          <th>Bonus vainqueur</th>
           <th>Scores exacts</th>
           <th>Bons résultats</th>
         </tr>
@@ -781,6 +797,7 @@ function renderWinningPlayers() {
           <tr>
             <td>${index + 1}. ${escapeHtml(w.name)}</td>
             <td>${w.points}</td>
+            <td>${w.bonusWinner}</td>
             <td>${w.exact}</td>
             <td>${w.outcome}</td>
           </tr>
@@ -811,6 +828,7 @@ function getStatsForUser(uid) {
   let points = 0;
   let exact = 0;
   let outcome = 0;
+  let bonusWinner = 0;
 
   state.matches.filter(isFinished).forEach((match) => {
     const pred = userPredictions.find((p) => p.matchId === match.id);
@@ -821,7 +839,15 @@ function getStatsForUser(uid) {
     if (score === 3) outcome += 1;
   });
 
-  return { points, exact, outcome, predictions: userPredictions.length };
+  const winningTeam = state.winnerInfo?.winningTeam;
+  const userWinnerChoice = state.winnerChoices.find((choice) => choice.userId === uid);
+
+  if (winningTeam && userWinnerChoice?.teamCode === winningTeam) {
+    bonusWinner = 10;
+    points += bonusWinner;
+  }
+
+  return { points, exact, outcome, bonusWinner, predictions: userPredictions.length };
 }
 
 function scorePrediction(pred, match) {
