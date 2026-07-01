@@ -10,7 +10,6 @@ import {
   getFirestore,
   collection,
   doc,
-  getDoc,
   setDoc,
   addDoc,
   updateDoc,
@@ -33,22 +32,15 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const WORLD_CUP_TEAMS = [
-  'Autriche', 'Angleterre', 'Argentine', 'Australie', 'Belgique', 'Brésil',
-  'Canada', 'Croatie', 'Danemark', 'Espagne', 'États-Unis', 'France', 'Algérie',
-  'Ghana', 'Bosnie-Herzégovine', 'RD Congo', 'Cap-Vert', 'Maroc', 'Mexique', 'Paraguay',
-  'Portugal', 'Sénégal', 'Suisse', 'Norvège', 'Suède'
-];
-
 const state = {
   authUser: null,
   profile: null,
   users: [],
   matches: [],
   predictions: [],
-  filter: 'all',
   winnerInfo: null,
   winnerChoices: [],
+  filter: 'all',
   unsubscribers: []
 };
 
@@ -82,8 +74,6 @@ const els = {
   adminResults: document.getElementById('admin-results'),
   adminSettingsCard: document.getElementById('admin-settings-card'),
   adminResultsCard: document.getElementById('admin-results-card'),
-  winnerPanel: document.getElementById('winner-panel'),
-  winnerAdminFeedback: document.getElementById('winner-admin-feedback'),
   themeToggle: document.getElementById('theme-toggle')
 };
 
@@ -97,10 +87,8 @@ function bindUI() {
       document.querySelectorAll('.nav button').forEach((b) => b.classList.remove('active'));
       document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
       btn.classList.add('active');
-      const target = document.getElementById(`view-${btn.dataset.view}`);
-      if (target) target.classList.add('active');
+      document.getElementById(`view-${btn.dataset.view}`).classList.add('active');
       if (btn.dataset.view === 'ranking') renderRankingEvolution();
-      if (btn.dataset.view === 'winner') renderWinnerView();
     });
   });
 
@@ -113,9 +101,11 @@ function bindUI() {
     });
   });
 
-  els.rankingParticipants?.addEventListener('change', renderRankingEvolution);
+  els.rankingParticipants?.addEventListener('change', () => {
+    renderRankingEvolution();
+  });
 
-  els.authForm?.addEventListener('submit', async (e) => {
+  els.authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
       await signInWithEmailAndPassword(auth, els.email.value.trim(), els.password.value.trim());
@@ -125,7 +115,7 @@ function bindUI() {
     }
   });
 
-  els.registerBtn?.addEventListener('click', async () => {
+  els.registerBtn.addEventListener('click', async () => {
     try {
       await createUserWithEmailAndPassword(auth, els.email.value.trim(), els.password.value.trim());
       setFeedback(els.authFeedback, 'Compte créé. Enregistrez maintenant votre profil.', 'success');
@@ -134,9 +124,9 @@ function bindUI() {
     }
   });
 
-  els.signOutBtn?.addEventListener('click', () => signOut(auth));
+  els.signOutBtn.addEventListener('click', () => signOut(auth));
 
-  els.profileForm?.addEventListener('submit', async (e) => {
+  els.profileForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!state.authUser) return;
     try {
@@ -153,7 +143,7 @@ function bindUI() {
     }
   });
 
-  els.matchForm?.addEventListener('submit', async (e) => {
+  els.matchForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!isAdmin()) return;
     try {
@@ -172,7 +162,7 @@ function bindUI() {
     }
   });
 
-  els.themeToggle?.addEventListener('click', () => {
+  els.themeToggle.addEventListener('click', () => {
     const root = document.documentElement;
     const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     root.setAttribute('data-theme', next);
@@ -183,7 +173,7 @@ function bindUI() {
 function applyTheme() {
   const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  if (els.themeToggle) els.themeToggle.textContent = dark ? '☀️' : '🌙';
+  els.themeToggle.textContent = dark ? '☀️' : '🌙';
 }
 
 function watchAuth() {
@@ -193,36 +183,18 @@ function watchAuth() {
     state.profile = null;
 
     if (!user) {
-      if (els.authPanel) els.authPanel.hidden = false;
-      if (els.app) els.app.hidden = true;
-      if (els.signOutBtn) els.signOutBtn.hidden = true;
+      els.authPanel.hidden = false;
+      els.app.hidden = true;
+      els.signOutBtn.hidden = true;
       return;
     }
 
-    if (els.authPanel) els.authPanel.hidden = true;
-    if (els.app) els.app.hidden = false;
-    if (els.signOutBtn) els.signOutBtn.hidden = false;
+    els.authPanel.hidden = true;
+    els.app.hidden = false;
+    els.signOutBtn.hidden = false;
 
-    await ensureWinnerDoc();
     subscribeData(user.uid);
   });
-}
-
-async function ensureWinnerDoc() {
-  try {
-    const ref = doc(db, 'winners', 'current');
-    const snap = await getDoc(ref);
-    if (snap.exists()) return;
-
-    await setDoc(ref, {
-      remainingTeams: [...WORLD_CUP_TEAMS],
-      winningTeam: null,
-      deadlineTimestamp: new Date('2026-07-02T19:00:00.000Z'),
-      updatedAt: serverTimestamp()
-    });
-  } catch (error) {
-    console.warn('ensureWinnerDoc failed', error);
-  }
 }
 
 function subscribeData(uid) {
@@ -230,52 +202,35 @@ function subscribeData(uid) {
     state.users = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
     state.profile = state.users.find((u) => u.uid === uid) || null;
     render();
-  }, (error) => {
-    console.error('users snapshot error', error);
-    state.users = [];
-    state.profile = null;
-    render();
   });
 
   const unsubMatches = onSnapshot(query(collection(db, 'matches'), orderBy('kickoff')), (snapshot) => {
     state.matches = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-    render();
-  }, (error) => {
-    console.error('matches snapshot error', error);
-    state.matches = [];
     render();
   });
 
   const unsubPredictions = onSnapshot(query(collection(db, 'predictions')), (snapshot) => {
     state.predictions = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
     render();
-  }, (error) => {
-    console.error('predictions snapshot error', error);
-    state.predictions = [];
-    render();
   });
 
-  const unsubWinnerInfo = onSnapshot(doc(db, 'winners', 'current'), (snap) => {
-    state.winnerInfo = snap.exists()
-      ? { id: snap.id, ...snap.data() }
-      : { id: 'current', remainingTeams: [...WORLD_CUP_TEAMS], winningTeam: null, deadlineTimestamp: null };
-    renderWinnerView();
-  }, (error) => {
-    console.warn('winner info unavailable', error);
-    state.winnerInfo = { id: 'current', remainingTeams: [...WORLD_CUP_TEAMS], winningTeam: null, deadlineTimestamp: null };
-    renderWinnerView();
+  const unsubWinnerInfo = onSnapshot(doc(db, 'settings', 'winnerInfo'), (docSnap) => {
+    state.winnerInfo = docSnap.exists() ? docSnap.data() : null;
+    render();
   });
 
   const unsubWinnerChoices = onSnapshot(query(collection(db, 'winnerChoices')), (snapshot) => {
     state.winnerChoices = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-    renderWinnerView();
-  }, (error) => {
-    console.warn('winner choices unavailable', error);
-    state.winnerChoices = [];
-    renderWinnerView();
+    render();
   });
 
-  state.unsubscribers = [unsubUsers, unsubMatches, unsubPredictions, unsubWinnerInfo, unsubWinnerChoices];
+  state.unsubscribers = [
+    unsubUsers,
+    unsubMatches,
+    unsubPredictions,
+    unsubWinnerInfo,
+    unsubWinnerChoices
+  ];
 }
 
 function cleanupListeners() {
@@ -286,10 +241,10 @@ function cleanupListeners() {
 function render() {
   if (!state.authUser) return;
 
-  if (els.currentUserName) els.currentUserName.textContent = state.profile?.displayName || state.authUser?.email || 'Profil à compléter';
-  if (els.currentUserRole) els.currentUserRole.textContent = state.profile?.role || 'Aucun rôle';
-  if (els.adminSettingsCard) els.adminSettingsCard.hidden = !isAdmin();
-  if (els.adminResultsCard) els.adminResultsCard.hidden = !isAdmin();
+  els.currentUserName.textContent = state.profile?.displayName || state.authUser?.email || 'Profil à compléter';
+  els.currentUserRole.textContent = state.profile?.role || 'Aucun rôle';
+  els.adminSettingsCard.hidden = !isAdmin();
+  els.adminResultsCard.hidden = !isAdmin();
 
   renderKpis();
   renderDashboard();
@@ -298,11 +253,10 @@ function render() {
   populateRankingParticipantsSelect();
   renderRankingEvolution();
   renderAdminResults();
-  renderWinnerView();
+  renderWinnerModule();
 }
 
 function renderKpis() {
-  if (!els.kpis) return;
   const participants = state.users.filter((u) => u.role === 'participant').length;
   const finished = state.matches.filter(isFinished).length;
   const leader = getRanking()[0];
@@ -323,7 +277,6 @@ function renderKpis() {
 }
 
 function renderDashboard() {
-  if (!els.dashboardMatches || !els.mySummary) return;
   const openMatches = state.matches.filter((m) => !isLocked(m)).slice(0, 5);
   els.dashboardMatches.innerHTML = '';
   openMatches.forEach((match) => els.dashboardMatches.appendChild(buildMatchCard(match)));
@@ -334,6 +287,7 @@ function renderDashboard() {
   els.mySummary.innerHTML = [
     ['Mon rang', rank ? rank : '—'],
     ['Mes points', myStats.points],
+    ['Bonus vainqueur', myStats.bonusWinner || 0],
     ['Scores exacts', myStats.exact],
     ['Bons résultats', myStats.outcome],
     ['Pronostics saisis', myStats.predictions]
@@ -346,7 +300,6 @@ function renderDashboard() {
 }
 
 function renderMatches() {
-  if (!els.matchesList) return;
   const matches = state.matches.filter((match) => {
     if (state.filter === 'open') return !isFinished(match) && !isLocked(match);
     if (state.filter === 'finished') return isFinished(match);
@@ -365,7 +318,7 @@ function buildMatchCard(match) {
   wrapper.innerHTML = `
     <div class="match-top">
       <div>
-        <strong>${escapeHtml(match.home)} vs ${escapeHtml(match.away)}</strong>
+        <strong>${match.home} vs ${match.away}</strong>
         <div class="muted">${formatDate(match.kickoff)}</div>
       </div>
       <div>
@@ -374,12 +327,12 @@ function buildMatchCard(match) {
     </div>
     <div class="match-grid">
       <div class="team-col">
-        <span>${escapeHtml(match.home)}</span>
+        <span>${match.home}</span>
         <input class="score-input home-score" type="number" min="0" max="20" value="${pred?.home ?? ''}" ${isLocked(match) ? 'disabled' : ''}>
       </div>
       <div></div>
       <div class="team-col">
-        <span>${escapeHtml(match.away)}</span>
+        <span>${match.away}</span>
         <input class="score-input away-score" type="number" min="0" max="20" value="${pred?.away ?? ''}" ${isLocked(match) ? 'disabled' : ''}>
       </div>
       <button class="btn btn-primary save-btn" ${isLocked(match) ? 'disabled' : ''}>Enregistrer</button>
@@ -406,15 +359,15 @@ function buildMatchCard(match) {
 }
 
 function renderRanking() {
-  if (!els.rankingBody) return;
   const ranking = getRanking();
   els.rankingBody.innerHTML = ranking.map((user, index) => `
     <tr>
       <td>${index + 1}</td>
-      <td>${escapeHtml(user.displayName || user.email)}</td>
-      <td>${user.points}</td>
-      <td>${user.exact}</td>
-      <td>${user.outcome}</td>
+      <td>${escapeHtml(user.displayName || user.email || 'Participant')}</td>
+      <td>${user.points || 0}</td>
+      <td>${user.bonusWinner || 0}</td>
+      <td>${user.exact || 0}</td>
+      <td>${user.outcome || 0}</td>
     </tr>
   `).join('');
 }
@@ -440,14 +393,18 @@ function populateRankingParticipantsSelect() {
 }
 
 function buildEvolutionByMatch() {
-  const finishedMatches = state.matches.filter(isFinished).sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
-  const participants = state.users.filter((u) => u.role === 'participant' || u.role === 'admin');
-  const selectedIds = els.rankingParticipants ? [...els.rankingParticipants.selectedOptions].map((o) => o.value) : ['all'];
+  const finishedMatches = state.matches
+    .filter(isFinished)
+    .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
 
-  const visibleParticipants =
-    selectedIds.includes('all') || !selectedIds.length
-      ? participants
-      : participants.filter((u) => selectedIds.includes(u.uid));
+  const participants = state.users.filter((u) => u.role === 'participant' || u.role === 'admin');
+  const selectedIds = els.rankingParticipants
+    ? [...els.rankingParticipants.selectedOptions].map((o) => o.value)
+    : ['all'];
+
+  const visibleParticipants = selectedIds.includes('all') || !selectedIds.length
+    ? participants
+    : participants.filter((u) => selectedIds.includes(u.uid));
 
   const cumulativeByUser = new Map(visibleParticipants.map((u) => [u.uid, 0]));
   const matchLabels = finishedMatches.map((match, index) => `M${index + 1}`);
@@ -466,14 +423,28 @@ function buildEvolutionByMatch() {
         cumulativeByUser.set(user.uid, (cumulativeByUser.get(user.uid) || 0) + scorePrediction(pred, match));
       }
     });
+
     series.forEach((item) => item.values.push(cumulativeByUser.get(item.uid) || 0));
   });
+
+  if (state.winnerInfo?.winningTeam) {
+    visibleParticipants.forEach((user) => {
+      const choice = state.winnerChoices.find((c) => c.userId === user.uid);
+      if (choice?.teamCode === state.winnerInfo.winningTeam) {
+        const serie = series.find((s) => s.uid === user.uid);
+        if (serie?.values.length) {
+          serie.values[serie.values.length - 1] += 10;
+        }
+      }
+    });
+  }
 
   return { matchLabels, series };
 }
 
 function renderRankingEvolution() {
   if (!els.rankingEvolutionChart || !window.Plotly) return;
+
   const { matchLabels, series } = buildEvolutionByMatch();
 
   if (!matchLabels.length || !series.length) {
@@ -509,7 +480,6 @@ function renderRankingEvolution() {
 }
 
 function renderAdminResults() {
-  if (!els.adminResults) return;
   els.adminResults.innerHTML = '';
   if (!isAdmin()) return;
 
@@ -519,7 +489,7 @@ function renderAdminResults() {
     card.innerHTML = `
       <div class="row wrap section-gap">
         <div>
-          <strong>${escapeHtml(match.home)} vs ${escapeHtml(match.away)}</strong>
+          <strong>${match.home} vs ${match.away}</strong>
           <div class="muted">${formatDate(match.kickoff)}</div>
         </div>
         <div>
@@ -550,244 +520,128 @@ function renderAdminResults() {
   });
 }
 
-function renderWinnerView() {
-  if (!els.winnerPanel || !state.authUser) return;
+function renderWinnerModule() {
+  const rankingView = document.getElementById('view-ranking');
+  if (!rankingView) return;
 
-  const info = state.winnerInfo || {
-    remainingTeams: [],
-    winningTeam: null,
-    deadlineTimestamp: null
-  };
-
-  const remainingTeams = Array.isArray(info.remainingTeams) ? info.remainingTeams : [];
-  const deadlineText = info.deadlineTimestamp?.toDate
-    ? formatDate(info.deadlineTimestamp.toDate())
-    : 'Mercredi 1 juillet 19:00';
-
-  const myChoice = state.winnerChoices.find((c) => c.userId === state.authUser.uid);
-  const locked = isDeadlinePassed() || !!info.winningTeam;
-
-  const aliveParticipants = getRanking().filter((user) => {
-    const choice = state.winnerChoices.find((c) => c.userId === user.uid);
-    return choice && remainingTeams.includes(choice.teamCode);
-  });
-
-  const participantBlock = `
-    <article class="card">
-      <h3>Mon choix</h3>
-      <p class="muted">Date limite : ${deadlineText}</p>
-      <div class="form-grid">
-        <label>
-          <span>Équipe choisie</span>
-          <select id="winner-team-select" class="input" ${locked ? 'disabled' : ''}>
-            <option value="">Choisir un pays</option>
-            ${remainingTeams.map((team) => `
-              <option value="${escapeHtml(team)}" ${myChoice?.teamCode === team ? 'selected' : ''}>
-                ${escapeHtml(team)}
-              </option>
-            `).join('')}
-          </select>
-        </label>
-        <button type="button" class="btn btn-primary" id="save-winner-choice-btn" ${locked ? 'disabled' : ''}>
-          Enregistrer
-        </button>
-      </div>
-      <p class="helper" id="winner-choice-feedback"></p>
-      ${myChoice?.teamCode ? `<p class="helper">Votre choix actuel : ${escapeHtml(myChoice.teamCode)}</p>` : ''}
-    </article>
-
-    <article class="card">
-      <h3>Participants encore en lice</h3>
-      ${
-        aliveParticipants.length
-          ? `
-            <table class="ranking-table">
-              <thead>
-                <tr>
-                  <th>Rang</th>
-                  <th>Participant</th>
-                  <th>Points</th>
-                  <th>Scores exacts</th>
-                  <th>Bons résultats</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${aliveParticipants.map((user, index) => `
-                  <tr>
-                    <td>${index + 1}</td>
-                    <td>${escapeHtml(user.displayName || user.email)}</td>
-                    <td>${user.points}</td>
-                    <td>${user.exact}</td>
-                    <td>${user.outcome}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          `
-          : `<p class="muted">Aucun participant encore en lice pour le moment.</p>`
-      }
-    </article>
-  `;
-
-  const adminBlock = isAdmin() ? `
-    <article class="card">
-      <h3>Admin — pays encore en course</h3>
-      <p class="muted">Cochez les pays encore en course puis cliquez sur enregistrer.</p>
-      <div class="form-grid" id="winner-admin-teams-list">
-        ${WORLD_CUP_TEAMS.map((team) => `
-          <label style="display:flex;align-items:center;gap:.5rem;">
-            <input type="checkbox" class="team-checkbox" value="${escapeHtml(team)}" ${remainingTeams.includes(team) ? 'checked' : ''}>
-            <span>${escapeHtml(team)}</span>
-          </label>
-        `).join('')}
-      </div>
-      <div class="row wrap" style="margin-top: 1rem;">
-        <button type="button" class="btn btn-primary" id="save-remaining-teams-btn">Enregistrer la liste</button>
-        <button type="button" class="btn" id="declare-winner-btn">Déclarer le vainqueur</button>
-      </div>
-      <p class="helper" id="winner-admin-feedback"></p>
-    </article>
-  ` : '';
-
-  els.winnerPanel.innerHTML = participantBlock + adminBlock;
-
-  document.getElementById('save-winner-choice-btn')?.addEventListener('click', async () => {
-    const teamCode = document.getElementById('winner-team-select')?.value;
-    const feedback = document.getElementById('winner-choice-feedback');
-
-    if (!teamCode) {
-      setFeedback(feedback, 'Veuillez choisir un pays.', 'danger');
-      return;
-    }
-
-    try {
-      await setDoc(doc(db, 'winnerChoices', state.authUser.uid), {
-        userId: state.authUser.uid,
-        teamCode,
-        chosenAt: serverTimestamp()
-      }, { merge: true });
-      setFeedback(feedback, 'Choix enregistré.', 'success');
-    } catch (error) {
-      setFeedback(feedback, error.message, 'danger');
-    }
-  });
-
-  document.getElementById('save-remaining-teams-btn')?.addEventListener('click', saveRemainingTeams);
-  document.getElementById('declare-winner-btn')?.addEventListener('click', declareWinner);
-
-  renderWinningPlayers();
-}
-
-function saveRemainingTeams() {
-  if (!isAdmin()) return;
-
-  const selected = [...document.querySelectorAll('.team-checkbox')]
-    .filter((cb) => cb.checked)
-    .map((cb) => cb.value);
-
-  updateDoc(doc(db, 'winners', 'current'), {
-    remainingTeams: selected,
-    updatedAt: serverTimestamp()
-  })
-    .then(() => {
-      state.winnerInfo = {
-        ...(state.winnerInfo || {}),
-        remainingTeams: selected
-      };
-      setFeedback(els.winnerAdminFeedback, 'Liste des pays restants enregistrée.', 'success');
-      renderWinnerView();
-    })
-    .catch((error) => setFeedback(els.winnerAdminFeedback, error.message, 'danger'));
-}
-
-function declareWinner() {
-  if (!isAdmin()) return;
-  const teams = state.winnerInfo?.remainingTeams || [];
-  const winner = window.prompt(`Entrez le pays vainqueur parmi : ${teams.join(', ')}`);
-  if (!winner) return;
-
-  updateDoc(doc(db, 'winners', 'current'), {
-    winningTeam: winner,
-    updatedAt: serverTimestamp()
-  })
-    .then(() => {
-      setFeedback(els.winnerAdminFeedback, 'Vainqueur déclaré.', 'success');
-      state.winnerInfo = {
-        ...(state.winnerInfo || {}),
-        winningTeam: winner
-      };
-      renderWinnerView();
-    })
-    .catch((error) => setFeedback(els.winnerAdminFeedback, error.message, 'danger'));
-}
-
-function renderWinningPlayers() {
-  if (!els.winnerPanel) return;
-
-  const winningTeam = state.winnerInfo?.winningTeam;
-  if (!winningTeam) return;
-
-  const winners = state.winnerChoices
-    .filter((choice) => choice.teamCode === winningTeam)
-    .map((choice) => {
-      const user = state.users.find((u) => u.uid === choice.userId);
-      const stats = getStatsForUser(choice.userId);
-      return {
-        uid: choice.userId,
-        name: user?.displayName || user?.email || choice.userId,
-        points: stats.points,
-        exact: stats.exact,
-        outcome: stats.outcome
-      };
-    })
-    .sort((a, b) =>
-      b.points - a.points ||
-      b.exact - a.exact ||
-      b.outcome - a.outcome ||
-      a.name.localeCompare(b.name)
-    );
-
-  const resultBoxId = 'winning-players-result';
-  let box = document.getElementById(resultBoxId);
-
-  if (!box) {
-    box = document.createElement('article');
-    box.className = 'card';
-    box.id = resultBoxId;
-    els.winnerPanel.appendChild(box);
+  let module = document.getElementById('winner-module-card');
+  if (!module) {
+    module = document.createElement('article');
+    module.className = 'card';
+    module.id = 'winner-module-card';
+    rankingView.appendChild(module);
   }
 
-  if (!winners.length) {
-    box.innerHTML = `
-      <h3>Gagnants du pari</h3>
-      <p class="muted">Personne n’a choisi ce vainqueur.</p>
-    `;
+  const myChoice = state.winnerChoices.find((c) => c.userId === state.authUser?.uid) || null;
+  const winningTeam = state.winnerInfo?.winningTeam || '';
+  const winnerDeadline = state.winnerInfo?.deadline || '';
+  const teams = getWinnerTeams();
+  const locked = isWinnerLocked();
+  const myChoiceLabel = myChoice?.teamCode || 'Aucun';
+
+  module.innerHTML = `
+    <h2>Vainqueur final</h2>
+    <p class="muted">Choisissez l’équipe que vous voyez championne. Bonus : 10 points si votre choix est correct.</p>
+
+    <div class="summary-grid" style="margin-bottom:16px;">
+      <div class="summary-item">
+        <strong>Mon choix</strong>
+        <div>${escapeHtml(myChoiceLabel)}</div>
+      </div>
+      <div class="summary-item">
+        <strong>Clôture</strong>
+        <div>${winnerDeadline ? formatDate(winnerDeadline) : 'Non définie'}</div>
+      </div>
+      <div class="summary-item">
+        <strong>Vainqueur officiel</strong>
+        <div>${winningTeam ? escapeHtml(winningTeam) : 'Non déclaré'}</div>
+      </div>
+    </div>
+
+    <div id="winner-participant-zone"></div>
+    <div id="winner-admin-zone"></div>
+  `;
+
+  const participantZone = module.querySelector('#winner-participant-zone');
+  participantZone.innerHTML = `
+    <div class="row wrap section-gap">
+      <select id="winner-team-select" class="input" ${locked ? 'disabled' : ''}>
+        <option value="">Choisir une équipe</option>
+        ${teams.map((team) => `<option value="${escapeAttr(team)}" ${myChoice?.teamCode === team ? 'selected' : ''}>${escapeHtml(team)}</option>`).join('')}
+      </select>
+      <button id="winner-save-btn" class="btn btn-primary" ${locked ? 'disabled' : ''}>Enregistrer mon vainqueur</button>
+    </div>
+    <div class="helper">${locked ? 'Les pronostics vainqueur sont verrouillés.' : 'Les pronostics sont encore ouverts.'}</div>
+  `;
+
+  participantZone.querySelector('#winner-save-btn')?.addEventListener('click', async () => {
+    const selectedTeam = participantZone.querySelector('#winner-team-select')?.value?.trim();
+    if (!state.authUser || !selectedTeam || isWinnerLocked()) return;
+
+    const docId = state.authUser.uid;
+    await setDoc(doc(db, 'winnerChoices', docId), {
+      userId: state.authUser.uid,
+      displayName: state.profile?.displayName || state.authUser.email,
+      teamCode: selectedTeam,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  });
+
+  const adminZone = module.querySelector('#winner-admin-zone');
+  if (!isAdmin()) {
+    adminZone.innerHTML = '';
     return;
   }
 
-  box.innerHTML = `
-    <h3>Gagnants du pari</h3>
-    <table class="ranking-table">
-      <thead>
-        <tr>
-          <th>Participant</th>
-          <th>Points</th>
-          <th>Scores exacts</th>
-          <th>Bons résultats</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${winners.map((w, index) => `
-          <tr>
-            <td>${index + 1}. ${escapeHtml(w.name)}</td>
-            <td>${w.points}</td>
-            <td>${w.exact}</td>
-            <td>${w.outcome}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
+  adminZone.innerHTML = `
+    <hr style="margin: 20px 0;">
+    <h3>Administration du vainqueur final</h3>
+    <div class="row wrap section-gap" style="margin-top:12px;">
+      <input id="winner-deadline-input" class="input" type="datetime-local" value="${toLocalInputValue(winnerDeadline)}">
+      <button id="winner-save-deadline-btn" class="btn">Enregistrer la clôture</button>
+    </div>
+
+    <div class="row wrap section-gap" style="margin-top:12px;">
+      <select id="winner-official-team-select" class="input">
+        <option value="">Déclarer le vainqueur officiel</option>
+        ${teams.map((team) => `<option value="${escapeAttr(team)}" ${winningTeam === team ? 'selected' : ''}>${escapeHtml(team)}</option>`).join('')}
+      </select>
+      <button id="winner-save-official-btn" class="btn btn-primary">Publier le vainqueur</button>
+    </div>
   `;
+
+  adminZone.querySelector('#winner-save-deadline-btn')?.addEventListener('click', async () => {
+    const raw = adminZone.querySelector('#winner-deadline-input')?.value;
+    await setDoc(doc(db, 'settings', 'winnerInfo'), {
+      deadline: raw ? new Date(raw).toISOString() : null,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  });
+
+  adminZone.querySelector('#winner-save-official-btn')?.addEventListener('click', async () => {
+    const selected = adminZone.querySelector('#winner-official-team-select')?.value?.trim();
+    if (!selected) return;
+
+    await setDoc(doc(db, 'settings', 'winnerInfo'), {
+      winningTeam: selected,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  });
+}
+
+function getWinnerTeams() {
+  const teams = new Set();
+  state.matches.forEach((match) => {
+    if (match.home) teams.add(match.home);
+    if (match.away) teams.add(match.away);
+  });
+  return [...teams].sort((a, b) => a.localeCompare(b, 'fr'));
+}
+
+function isWinnerLocked() {
+  const deadline = state.winnerInfo?.deadline;
+  if (!deadline) return false;
+  return new Date(deadline).getTime() <= Date.now();
 }
 
 function getPrediction(userId, matchId) {
@@ -797,7 +651,10 @@ function getPrediction(userId, matchId) {
 function getRanking() {
   return state.users
     .filter((user) => user.role === 'participant' || user.role === 'admin')
-    .map((user) => ({ ...user, ...getStatsForUser(user.uid) }))
+    .map((user) => ({
+      ...user,
+      ...getStatsForUser(user.uid)
+    }))
     .sort((a, b) =>
       b.points - a.points ||
       b.exact - a.exact ||
@@ -811,6 +668,7 @@ function getStatsForUser(uid) {
   let points = 0;
   let exact = 0;
   let outcome = 0;
+  let bonusWinner = 0;
 
   state.matches.filter(isFinished).forEach((match) => {
     const pred = userPredictions.find((p) => p.matchId === match.id);
@@ -821,7 +679,15 @@ function getStatsForUser(uid) {
     if (score === 3) outcome += 1;
   });
 
-  return { points, exact, outcome, predictions: userPredictions.length };
+  const winningTeam = state.winnerInfo?.winningTeam;
+  const userWinnerChoice = state.winnerChoices.find((c) => c.userId === uid);
+
+  if (winningTeam && userWinnerChoice?.teamCode === winningTeam) {
+    bonusWinner = 10;
+    points += bonusWinner;
+  }
+
+  return { points, exact, outcome, bonusWinner, predictions: userPredictions.length };
 }
 
 function scorePrediction(pred, match) {
@@ -843,29 +709,28 @@ function isLocked(match) {
   return new Date(match.kickoff).getTime() <= Date.now() || isFinished(match);
 }
 
-function isAdmin() {
-  return state.profile?.role === 'admin';
-}
-
-function isDeadlinePassed() {
-  const deadline = state.winnerInfo?.deadlineTimestamp?.toDate
-    ? state.winnerInfo.deadlineTimestamp.toDate().getTime()
-    : new Date('2026-07-01T19:00:00+02:00').getTime();
-  return Date.now() > deadline;
-}
-
 function matchStatus(match) {
   if (isFinished(match)) return `Terminé ${match.homeScore}-${match.awayScore}`;
   if (isLocked(match)) return 'Verrouillé';
   return 'Ouvert';
 }
 
+function isAdmin() {
+  return state.profile?.role === 'admin';
+}
+
 function formatDate(iso) {
   return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+function toLocalInputValue(iso) {
+  if (!iso) return '';
+  const date = new Date(iso);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function setFeedback(el, message, type) {
-  if (!el) return;
   el.textContent = message;
   el.className = `helper ${type}`;
 }
@@ -879,10 +744,14 @@ function mapAuthError(error) {
 }
 
 function escapeHtml(value) {
-  return String(value)
+  return String(value ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
+    .replaceAll("'", '&#39;');
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value);
 }
