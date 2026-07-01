@@ -57,6 +57,7 @@
                         <button class="active" data-view="dashboard">Tableau de bord</button>
                         <button data-view="matches">Matches</button>
                         <button data-view="ranking">Classement</button>
+                        <button data-view="winner">Vainqueur</button>
                         <button data-view="admin">Admin</button>
                     </nav>
 
@@ -113,7 +114,6 @@
                                             <th>Rang</th>
                                             <th>Participant</th>
                                             <th>Points</th>
-                                            <th>Bonus vainqueur</th>
                                             <th>Scores exacts</th>
                                             <th>Bons résultats</th>
                                         </tr>
@@ -139,6 +139,18 @@
                                     <div id="ranking-evolution-chart"></div>
                                 </div>
                             </div>
+                        </article>
+                    </div>
+
+                    <div class="view" id="view-winner">
+                        <article class="card">
+                            <div class="section-head">
+                                <div>
+                                    <h2>Vainqueur</h2>
+                                    <p class="muted">Chaque participant choisit le pays qu’il voit gagner la Coupe du monde.</p>
+                                </div>
+                            </div>
+                            <div id="winner-panel" class="list"></div>
                         </article>
                     </div>
 
@@ -189,6 +201,17 @@
                         <article class="card admin-only" id="admin-results-card">
                             <h2>Résultats officiels</h2>
                             <div id="admin-results" class="list"></div>
+                        </article>
+
+                        <article class="card admin-only" id="admin-winner-card">
+                            <h2>Gestion du vainqueur</h2>
+                            <p class="muted">L’admin gère les pays encore en course et déclare le vainqueur final.</p>
+                            <form id="winner-admin-form" class="form-grid"></form>
+                            <div class="row wrap">
+                                <button type="button" class="btn btn-primary" id="save-remaining-teams-btn">Enregistrer la liste</button>
+                                <button type="button" class="btn" id="declare-winner-btn">Déclarer le vainqueur</button>
+                            </div>
+                            <p class="helper" id="winner-admin-feedback"></p>
                         </article>
                     </div>
                 </section>
