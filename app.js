@@ -655,6 +655,12 @@ function renderWinnerView() {
     const teamCode = document.getElementById('winner-team-select')?.value;
     const feedback = document.getElementById('winner-choice-feedback');
 
+    if (isDeadlinePassed() || state.winnerInfo?.winningTeam) {
+      setFeedback(feedback, 'Les choix sont désormais fermés.', 'danger');
+      renderWinnerView();
+      return;
+    }
+
     if (!teamCode) {
       setFeedback(feedback, 'Veuillez choisir un pays.', 'danger');
       return;
